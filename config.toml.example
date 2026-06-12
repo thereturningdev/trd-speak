@@ -1,0 +1,44 @@
+# local-flow configuration
+# Delete this file (or any section/key) to fall back to the built-in defaults,
+# which are the same values shown below.
+
+[hotkey]
+# Keys that must ALL be held simultaneously to record. Release any one of
+# them to stop recording and transcribe. 1 to 3 keys allowed.
+#
+# Valid key names:
+#   Modifiers:  "ctrl", "alt" (alias "option"), "cmd" (alias "command"), "shift"
+#   Arrows:     "right", "left", "up", "down"
+#   Others:     "space", "tab", "enter", "esc", "f1" .. "f20"
+#   Or any single character, e.g. "z"
+#
+# Modifier-only combos (like the default ctrl+alt) are the most reliable on
+# macOS: they don't type anything into the focused app and rarely collide
+# with system shortcuts. Note: ctrl+right conflicts with the default
+# Mission Control "Move right a space" shortcut — avoid it unless you have
+# changed that shortcut in System Settings.
+keys = ["ctrl", "alt"]
+
+[whisper]
+# faster-whisper model to use. "small.en" is a good speed/accuracy balance
+# on an 8 GB Apple Silicon machine. Alternatives: "tiny.en", "base.en",
+# "medium.en" (slower, more RAM). English-only models recommended.
+model = "small.en"
+# Quantization used for CPU inference. "int8" is fastest and lightest.
+compute_type = "int8"
+# Decoding beam width. 1 (greedy) is what realtime dictation tools use and is
+# several times faster; raise to e.g. 5 for slightly more careful decoding at
+# a big speed cost on long recordings.
+beam_size = 1
+
+[recording]
+# Maximum recording length in seconds. Audio beyond this is dropped.
+max_seconds = 180
+# Microphone sample rate in Hz. Whisper expects 16000; leave as is.
+sample_rate = 16000
+
+[paste]
+# Seconds to wait after synthesizing Cmd+V before restoring your previous
+# clipboard contents. Increase if pastes occasionally come out as your old
+# clipboard text (the target app was slow to read the clipboard).
+restore_delay = 0.4
