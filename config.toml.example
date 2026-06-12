@@ -20,10 +20,11 @@
 keys = ["ctrl", "alt"]
 
 [whisper]
-# faster-whisper model to use. "small.en" is a good speed/accuracy balance
-# on an 8 GB Apple Silicon machine. Alternatives: "tiny.en", "base.en",
-# "medium.en" (slower, more RAM). English-only models recommended.
-model = "small.en"
+# faster-whisper model to use. "base.en" is fast on Apple Silicon CPUs with
+# good accuracy for clear speech. Alternatives: "tiny.en" (fastest),
+# "small.en" / "medium.en" (more accurate, slower and more RAM).
+# English-only models recommended.
+model = "base.en"
 # Quantization used for CPU inference. "int8" is fastest and lightest.
 compute_type = "int8"
 # Decoding beam width. 1 (greedy) is what realtime dictation tools use and is

@@ -17,7 +17,7 @@ class Transcriber:
 
     def __init__(
         self,
-        model_name: str = "small.en",
+        model_name: str = "base.en",
         compute_type: str = "int8",
         beam_size: int = 1,
     ) -> None:

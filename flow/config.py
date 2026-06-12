@@ -9,7 +9,7 @@ from pathlib import Path
 class Config:
     """Runtime settings, populated from config.toml with sensible defaults."""
 
-    model: str = "small.en"
+    model: str = "base.en"
     keys: list[str] = field(default_factory=lambda: ["ctrl", "alt"])
     max_seconds: int = 180
     sample_rate: int = 16000

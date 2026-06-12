@@ -111,7 +111,7 @@ The two settings most people change:
 keys = ["ctrl", "alt"]    # e.g. ["ctrl", "shift"] or ["f19"]
 
 [whisper]
-model = "small.en"        # "base.en" = faster, "medium.en" = more accurate
+model = "base.en"         # "tiny.en" = faster, "small.en" = more accurate
 ```
 
 Restart the app (menu bar icon → Quit LocalFlow, then `open LocalFlow.app`)
@@ -148,4 +148,4 @@ permission by name.
 Then delete the `local-flow` folder, remove LocalFlow from
 System Settings → Privacy & Security (Microphone, Input Monitoring,
 Accessibility), and optionally delete the downloaded model:
-`rm -rf ~/.cache/huggingface/hub/models--Systran--faster-whisper-small.en`.
+`rm -rf ~/.cache/huggingface/hub/models--Systran--faster-whisper-base.en`.

@@ -119,7 +119,7 @@ apply changes.
 | Option | Default | Meaning |
 | --- | --- | --- |
 | `hotkey.keys` | `["ctrl", "alt"]` | 1–3 keys that must ALL be held to record; releasing any one stops and transcribes. |
-| `whisper.model` | `"small.en"` | faster-whisper model: `tiny.en`, `base.en`, `small.en`, `medium.en`, … |
+| `whisper.model` | `"base.en"` | faster-whisper model: `tiny.en`, `base.en`, `small.en`, `medium.en`, … |
 | `whisper.compute_type` | `"int8"` | Quantization for CPU inference; `int8` is fastest and lightest. |
 | `whisper.beam_size` | `1` | Decoding beam width; `1` (greedy) is fastest, higher is slightly more accurate but much slower on long recordings. |
 | `recording.max_seconds` | `180` | Maximum recording length; audio beyond this is dropped. |
