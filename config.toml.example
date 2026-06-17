@@ -19,6 +19,13 @@
 # changed that shortcut in System Settings.
 keys = ["ctrl", "alt"]
 
+[engine]
+# Which transcription engine to use: "whisper" (faster-whisper, CPU, light)
+# or "parakeet" (Apple-GPU, faster + more accurate, needs ./setup.sh --parakeet).
+# You can also switch live from the menu-bar icon; that choice is remembered
+# separately and overrides this value.
+name = "whisper"
+
 [whisper]
 # faster-whisper model to use. "base.en" is fast on Apple Silicon CPUs with
 # good accuracy for clear speech. Alternatives: "tiny.en" (fastest),
