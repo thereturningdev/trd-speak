@@ -42,9 +42,10 @@ import AppKit
 import Foundation
 from Foundation import NSObject
 
-from flow import permissions
+from flow import engine_state, permissions
 from flow.app import App
 from flow.config import Config
+from flow.engines import ENGINE_NAMES, ENGINES
 
 LOG_PATH = os.path.expanduser("~/Library/Logs/local-flow.log")
 
@@ -53,6 +54,7 @@ _STATE_ICONS = {
     "ready": "🎤",
     "recording": "🔴",
     "processing": "✍️",
+    "loading": "⏳",
     "permissions": "⚠️",
 }
 
@@ -239,6 +241,13 @@ class _Delegate(NSObject):
         """USER-initiated relaunch ("Restart LocalFlow now" row)."""
         _relaunch()
 
+    def selectEngine_(self, sender) -> None:
+        """Engine submenu row clicked: ask the app to switch engines."""
+        name = str(sender.representedObject())
+        logic = getattr(self, "logic", None)
+        if logic is not None:
+            logic.set_engine(name)
+
     def applicationShouldHandleReopen_hasVisibleWindows_(self, _app, _flag):
         # Dock icon clicked while running: open the status item's menu so
         # the Dock leads straight to the controls.
@@ -259,6 +268,7 @@ class MenuBar:
         self._missing_keys: tuple = ()
         self._mic_status = ""
         self._restart_needed = False
+        self._active_engine = ""
 
         self._item = AppKit.NSStatusBar.systemStatusBar().statusItemWithLength_(
             AppKit.NSVariableStatusItemLength
@@ -300,6 +310,27 @@ class MenuBar:
         self._perm_separator.setHidden_(True)
         menu.addItem_(self._perm_separator)
 
+        # Transcription engine picker (registry-driven).
+        self._engine_root = AppKit.NSMenuItem.alloc().initWithTitle_action_keyEquivalent_(
+            "Transcription Engine", None, ""
+        )
+        engine_menu = AppKit.NSMenu.alloc().init()
+        engine_menu.setAutoenablesItems_(False)
+        self._engine_items: dict = {}
+        for info in ENGINES:
+            item = AppKit.NSMenuItem.alloc().initWithTitle_action_keyEquivalent_(
+                info.label, "selectEngine:", ""
+            )
+            item.setTarget_(delegate)
+            item.setRepresentedObject_(info.name)
+            item.setToolTip_(info.description)
+            engine_menu.addItem_(item)
+            self._engine_items[info.name] = item
+        self._engine_root.setSubmenu_(engine_menu)
+        menu.addItem_(self._engine_root)
+        self._engine_separator = AppKit.NSMenuItem.separatorItem()
+        menu.addItem_(self._engine_separator)
+
         log_item = AppKit.NSMenuItem.alloc().initWithTitle_action_keyEquivalent_(
             "Open Log", "openLog:", ""
         )
@@ -337,6 +368,11 @@ class MenuBar:
         self._restart_needed = True
         _on_main(self._render)
 
+    def update_engine(self, active_name: str) -> None:
+        """Thread-safe: tick the active engine and refresh enabled state."""
+        self._active_engine = active_name
+        _on_main(self._render)
+
     def _render(self) -> None:
         """Re-render icon, header, and onboarding rows (main thread only).
 
@@ -372,6 +408,7 @@ class MenuBar:
                 "ready": f"Ready — hold {self._combo} to dictate",
                 "recording": "Recording… release to transcribe",
                 "processing": "Transcribing…",
+                "loading": "Switching engine…",
             }
             self._item.button().setTitle_(
                 _STATE_ICONS.get(self._app_state, _STATE_ICONS["ready"])
@@ -411,6 +448,20 @@ class MenuBar:
             else:
                 item.setHidden_(True)
         self._perm_separator.setHidden_(not (missing or mic_unknown or restart))
+        # Engine picker: visible only in the normal (fully granted) state; the
+        # active engine is checked; all rows disabled unless idle/ready.
+        show_engine = not (missing or mic_unknown or restart)
+        self._engine_root.setHidden_(not show_engine)
+        self._engine_separator.setHidden_(not show_engine)
+        ready = self._app_state == "ready"
+        for name, item in self._engine_items.items():
+            on = (
+                AppKit.NSControlStateValueOn
+                if name == self._active_engine
+                else AppKit.NSControlStateValueOff
+            )
+            item.setState_(on)
+            item.setEnabled_(ready)
 
 
 def run(config: Config) -> None:
@@ -424,8 +475,14 @@ def run(config: Config) -> None:
     combo = "+".join(config.keys)
     ui = MenuBar(combo, delegate)
     delegate.menubar = ui  # for applicationShouldHandleReopen
+    # The menu-bar choice (state file) takes precedence over config.toml.
+    config.engine = engine_state.resolve_engine(config.engine, ENGINE_NAMES)
     logic = App(config)
     logic.on_state = ui.set_state
+    logic.on_engine = ui.update_engine
+    logic.notify = _notify
+    delegate.logic = logic
+    ui.update_engine(logic.engine_name)
 
     # This process is freshly started, so the in-process answer is fresh.
     snap = _snapshot_inprocess()
@@ -450,7 +507,7 @@ def run(config: Config) -> None:
     def boot() -> None:
         """Attempt the normal in-process boot (model load + hotkey start)."""
         state["booting"] = True
-        ui.set_state("waiting", f"Loading model {config.model}…")
+        ui.set_state("waiting", f"Loading {config.engine} engine…")
 
         def work() -> None:  # worker thread: no direct UI access
             try:
