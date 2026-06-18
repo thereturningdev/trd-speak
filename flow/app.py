@@ -28,6 +28,9 @@ class App:
         self.engine_name = config.engine
         self.transcriber = make_transcriber(self.engine_name, config)
         self._switch_thread = None
+        self._dictation_thread = None
+        # Signals the active dictation worker to stop recording and process.
+        self._stop_recording = threading.Event()
         self.hotkey = HotkeyListener(
             keys=config.keys,
             on_activate=self._on_activate,
@@ -57,7 +60,14 @@ class App:
                 pass
 
     def _on_activate(self) -> None:
-        """Hotkey combo held: start recording (called on the listener thread)."""
+        """Hotkey combo held: begin a dictation.
+
+        This runs on the macOS main run-loop thread (the event tap's
+        callback), so it MUST return immediately: the blocking work
+        (recorder.start(), which can stall for seconds on a flaky audio
+        device) is handed to a worker thread. Blocking here would freeze the
+        run loop and macOS would disable the event tap, killing the hotkey.
+        """
         with self._lock:
             if self._state == PROCESSING:
                 print("Still processing the previous dictation — ignored.")
@@ -68,24 +78,48 @@ class App:
             if self._state != IDLE:
                 return
             self._state = RECORDING
+            # Created under the lock, atomically with the state, so a release
+            # racing in cannot signal a stale event.
+            self._stop_recording = threading.Event()
+        self._dictation_thread = threading.Thread(target=self._dictate, daemon=True)
+        self._dictation_thread.start()
+
+    def _dictate(self) -> None:
+        """Own one dictation end-to-end on a worker thread.
+
+        Start recording, wait for the combo release, then transcribe and
+        paste. Keeping start() and stop() sequential on a single thread means
+        stop() can never race ahead of a slow start().
+        """
+        stop_recording = self._stop_recording
         try:
             self.recorder.start()
-            self._notify("recording")
-            print("Recording… release to transcribe.")
         except Exception as exc:
             print(f"Could not start recording: {exc}")
             with self._lock:
                 self._state = IDLE
             self._notify("ready")
+            return
+        # If the user already released during a slow start(), we are already
+        # in PROCESSING — skip the "recording" announcement and go straight on.
+        if not stop_recording.is_set():
+            self._notify("recording")
+            print("Recording… release to transcribe.")
+        stop_recording.wait()
+        self._process()
 
     def _on_deactivate(self) -> None:
-        """Any combo key released: process the recording on a worker thread."""
+        """Any combo key released: tell the dictation worker to stop.
+
+        Also runs on the main run-loop thread, so it only flips state and
+        signals — the actual stop/transcribe/paste happens on the worker.
+        """
         with self._lock:
             if self._state != RECORDING:
                 return
             self._state = PROCESSING
         self._notify("processing")
-        threading.Thread(target=self._process, daemon=True).start()
+        self._stop_recording.set()
 
     def _process(self) -> None:
         """Stop recording, transcribe, paste. Always returns to IDLE."""

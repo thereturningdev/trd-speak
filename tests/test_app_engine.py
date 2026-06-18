@@ -1,9 +1,23 @@
+import threading
+import time
+
+import numpy as np
 import pytest
 
 import flow.app as app_mod
-from flow.app import App, IDLE, LOADING, PROCESSING
+from flow.app import App, IDLE, LOADING, PROCESSING, RECORDING
 from flow.config import Config
 from flow.engines import EngineUnavailable, Transcriber
+
+
+def _wait_until(predicate, timeout=5.0):
+    """Spin until predicate() is true or the timeout elapses."""
+    deadline = time.monotonic() + timeout
+    while time.monotonic() < deadline:
+        if predicate():
+            return True
+        time.sleep(0.005)
+    return predicate()
 
 
 class FakeEngine(Transcriber):
@@ -88,3 +102,100 @@ def test_failed_load_reverts(app, monkeypatch):
     assert app.engine_name == "whisper"
     assert app._state == IDLE
     assert notes
+
+
+# --- recording must never block the hotkey (event-tap) callback ----------
+
+
+class _BlockingRecorder:
+    """Recorder whose start() blocks until released — mimics a stalled
+    PortAudio device. stop() records call order so tests can assert that
+    stop never runs before start has finished."""
+
+    def __init__(self):
+        self.order = []
+        self.release = threading.Event()
+        self.started = threading.Event()
+
+    def start(self):
+        self.order.append("start-begin")
+        self.started.set()
+        assert self.release.wait(5), "start() was never released"
+        self.order.append("start-end")
+
+    def stop(self):
+        self.order.append("stop")
+        return np.zeros(16000, dtype=np.float32)
+
+
+def test_on_activate_returns_without_waiting_for_recorder_start(app):
+    """The hotkey combo fires _on_activate on the macOS main run-loop thread;
+    it MUST return immediately even if recorder.start() stalls, or the run
+    loop freezes and macOS disables the event tap."""
+    rec = _BlockingRecorder()
+    app.recorder = rec
+
+    t = threading.Thread(target=app._on_activate)
+    t.start()
+    t.join(timeout=1.0)
+    returned_promptly = not t.is_alive()
+
+    rec.release.set()  # let the (offloaded) start() finish
+    t.join(timeout=5)
+
+    assert returned_promptly, "_on_activate blocked on recorder.start()"
+    assert rec.started.wait(2), "recording never actually started"
+
+
+def test_release_during_slow_start_still_stops_after_start(app, monkeypatch):
+    """If the user releases the combo while recorder.start() is still running,
+    stop() must run only AFTER start() completes (no start/stop race)."""
+    pasted = []
+    monkeypatch.setattr(
+        app_mod, "paste_text", lambda text, restore_delay=0: pasted.append(text)
+    )
+    app.can_paste = lambda: True
+    app.hotkey.wait_all_released = lambda timeout=2.0: True
+    rec = _BlockingRecorder()
+    app.recorder = rec
+    app.transcriber = FakeEngine("whisper")  # transcribe() -> "x"
+
+    t = threading.Thread(target=app._on_activate)
+    t.start()
+    assert _wait_until(lambda: rec.order == ["start-begin"], 2)
+
+    app._on_deactivate()  # user releases before start() has finished
+    rec.release.set()  # start() now completes
+    t.join(timeout=5)
+
+    assert _wait_until(lambda: app._state == IDLE, 5)
+    assert rec.order == ["start-begin", "start-end", "stop"]
+    assert pasted == ["x "]
+
+
+def test_full_dictation_cycle_records_transcribes_and_pastes(app, monkeypatch):
+    """End-to-end happy path across the new threading: activate -> deactivate
+    -> transcribe -> paste -> back to IDLE."""
+    pasted = []
+    monkeypatch.setattr(
+        app_mod, "paste_text", lambda text, restore_delay=0: pasted.append(text)
+    )
+    app.can_paste = lambda: True
+    app.hotkey.wait_all_released = lambda timeout=2.0: True
+
+    class FakeRec:
+        def start(self):
+            pass
+
+        def stop(self):
+            return np.zeros(16000, dtype=np.float32)
+
+    app.recorder = FakeRec()
+    app.transcriber = FakeEngine("whisper")
+
+    app._on_activate()
+    assert _wait_until(lambda: app._state == RECORDING, 2)
+    app._on_deactivate()
+
+    assert _wait_until(lambda: app._state == IDLE, 5)
+    assert pasted == ["x "]

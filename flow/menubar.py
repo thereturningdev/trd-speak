@@ -546,6 +546,15 @@ def run(config: Config) -> None:
 
     def poll(_timer) -> None:
         state["timer_fires"] += 1
+        # Event-tap watchdog: if macOS disabled the hotkey tap (a slow
+        # callback trips its timeout), re-assert it. Runs every tick (before
+        # the throttle below) so the hotkey recovers within ~2 s.
+        if state["boot_ok"]:
+            try:
+                if logic.hotkey.ensure_enabled():
+                    print("Hotkey tap had been disabled — re-enabled by watchdog.")
+            except Exception as exc:
+                print(f"Hotkey watchdog error: {exc}")
         # 2 s while anything is missing or the boot has not finished; back
         # off to ~30 s once Ready (still catches a user revoking a grant,
         # without a helper process every 2 s forever).

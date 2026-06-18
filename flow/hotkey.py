@@ -202,6 +202,23 @@ class HotkeyListener:
             self._active = False
             self._cond.notify_all()
 
+    def ensure_enabled(self) -> bool:
+        """Re-assert the event tap if macOS has disabled it.
+
+        A tap callback that runs too long trips the system's tap-timeout
+        watchdog, which disables the tap; the keyboard then stops reaching us
+        even though the process is alive. A periodic caller (the menu poll)
+        uses this to recover. Returns True if the tap had to be re-enabled,
+        False if it was already enabled or no tap exists.
+        """
+        tap = self._tap
+        if tap is None:
+            return False
+        if not Quartz.CGEventTapIsEnabled(tap):
+            Quartz.CGEventTapEnable(tap, True)
+            return True
+        return False
+
     def wait_all_released(self, timeout: float = 2.0) -> bool:
         """Block until every trigger key is physically up.
 
@@ -230,6 +247,7 @@ class HotkeyListener:
             ):
                 if self._tap is not None:
                     Quartz.CGEventTapEnable(self._tap, True)
+                    print("Keyboard event tap was disabled by the system — re-enabled it.")
                 return event
             keycode = Quartz.CGEventGetIntegerValueField(
                 event, Quartz.kCGKeyboardEventKeycode
