@@ -472,6 +472,17 @@ def run(config: Config) -> None:
     delegate = _Delegate.alloc().init()
     nsapp.setDelegate_(delegate)
 
+    # Opt out of App Nap. A window-less, background menu-bar app gets
+    # throttled/suspended by macOS after sitting idle in the background, which
+    # silently stalls the keyboard event tap — the hotkey "stops working after
+    # a while". Hold a process-activity assertion for the whole lifetime (kept
+    # alive on the delegate). The "AllowingIdleSystemSleep" variant blocks App
+    # Nap but still lets the Mac sleep normally.
+    delegate._app_nap = Foundation.NSProcessInfo.processInfo().beginActivityWithOptions_reason_(
+        Foundation.NSActivityUserInitiatedAllowingIdleSystemSleep,
+        "LocalFlow push-to-talk hotkey must keep receiving key events",
+    )
+
     combo = "+".join(config.keys)
     ui = MenuBar(combo, delegate)
     delegate.menubar = ui  # for applicationShouldHandleReopen
@@ -553,6 +564,12 @@ def run(config: Config) -> None:
             try:
                 if logic.hotkey.ensure_enabled():
                     print("Hotkey tap had been disabled — re-enabled by watchdog.")
+                # Liveness heartbeat (~30 s): a long run of zeros while the app
+                # is in use means the tap has gone silent — direct evidence of
+                # the "stops after a while" freeze, no keystrokes logged.
+                if state["timer_fires"] % 15 == 0:
+                    n = logic.hotkey.take_event_count()
+                    print(f"Hotkey tap heartbeat: {n} events in the last ~30 s.")
             except Exception as exc:
                 print(f"Hotkey watchdog error: {exc}")
         # 2 s while anything is missing or the boot has not finished; back

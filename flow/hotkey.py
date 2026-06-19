@@ -138,6 +138,9 @@ class HotkeyListener:
         self._tap = None
         self._source = None
         self._callback = None
+        # Liveness counter: how many events the tap has delivered since the
+        # last poll. Counts only THAT events arrive, never which keys.
+        self._event_count = 0
 
     def start(self) -> None:
         """Create and enable the event tap on the main run loop (non-blocking).
@@ -219,6 +222,16 @@ class HotkeyListener:
             return True
         return False
 
+    def take_event_count(self) -> int:
+        """Return the number of events seen since the last call, and reset.
+
+        A periodic caller logs this as a tap heartbeat: a long stretch of
+        zeros while the app is in use means the tap has gone silent.
+        """
+        count = self._event_count
+        self._event_count = 0
+        return count
+
     def wait_all_released(self, timeout: float = 2.0) -> bool:
         """Block until every trigger key is physically up.
 
@@ -241,6 +254,7 @@ class HotkeyListener:
         # An exception escaping a tap callback kills the tap silently, so
         # the entire body is guarded.
         try:
+            self._event_count += 1
             if event_type in (
                 Quartz.kCGEventTapDisabledByTimeout,
                 Quartz.kCGEventTapDisabledByUserInput,

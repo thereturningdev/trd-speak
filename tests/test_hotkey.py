@@ -42,3 +42,24 @@ def test_ensure_enabled_reenables_a_disabled_tap(monkeypatch):
     # Already enabled -> no-op, reports False.
     assert listener.ensure_enabled() is False
     assert calls == [True]
+
+
+def test_take_event_count_reads_and_resets():
+    listener = _listener()
+    assert listener.take_event_count() == 0
+    listener._event_count = 3
+    assert listener.take_event_count() == 3  # reads
+    assert listener.take_event_count() == 0  # and resets
+
+
+def test_callback_counts_every_event_for_liveness(monkeypatch):
+    """The tap counts that events arrive (never which keys), so the poll can
+    tell a live tap from a silently-dead one."""
+    listener = _listener()
+    # Non-target keycode: exercises the count without firing the combo.
+    monkeypatch.setattr(hk.Quartz, "CGEventGetIntegerValueField", lambda e, f: 999)
+
+    listener._tap_callback(None, hk.Quartz.kCGEventKeyDown, object(), None)
+    listener._tap_callback(None, hk.Quartz.kCGEventKeyUp, object(), None)
+
+    assert listener.take_event_count() == 2
