@@ -114,10 +114,8 @@ keys = ["ctrl", "alt"]    # e.g. ["ctrl", "shift"] or ["f19"]
 model = "base.en"         # "tiny.en" = faster, "small.en" = more accurate
 
 [engine]
-name = "whisper"          # or "parakeet" (run ./setup.sh --parakeet first)
+name = "whisper"          # faster-whisper (the only engine)
 ```
-
-You can switch engines any time from the menu-bar icon.
 
 Restart the app (menu bar icon → Quit LocalFlow, then `open LocalFlow.app`)
 to apply changes. The full option list is in the

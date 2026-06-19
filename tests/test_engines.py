@@ -11,10 +11,10 @@ from flow.engines import (
 )
 
 
-def test_registry_lists_both_engines():
+def test_registry_lists_whisper():
     names = [e.name for e in ENGINES]
-    assert names == ["whisper", "parakeet"]
-    assert ENGINE_NAMES == ("whisper", "parakeet")
+    assert names == ["whisper"]
+    assert ENGINE_NAMES == ("whisper",)
     for e in ENGINES:
         assert e.label and e.description
 

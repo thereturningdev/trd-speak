@@ -2,8 +2,8 @@
 
 This package keeps the heavy, engine-specific imports (CTranslate2, MLX) out
 of module import time: the concrete classes are imported lazily inside
-``make_transcriber`` so that, e.g., a missing ``parakeet-mlx`` never affects
-faster-whisper users. ``App`` depends only on the ``Transcriber`` interface.
+``make_transcriber`` so that a missing or broken optional engine dependency
+never affects the others. ``App`` depends only on the ``Transcriber`` interface.
 """
 
 from __future__ import annotations
@@ -51,7 +51,6 @@ class EngineInfo:
 
 ENGINES: tuple[EngineInfo, ...] = (
     EngineInfo("whisper", "faster-whisper", "CPU · light · default"),
-    EngineInfo("parakeet", "Parakeet", "Apple GPU · faster · more accurate"),
 )
 
 ENGINE_NAMES: tuple[str, ...] = tuple(e.name for e in ENGINES)
@@ -71,8 +70,4 @@ def make_transcriber(name: str, config) -> Transcriber:
             compute_type=config.compute_type,
             beam_size=config.beam_size,
         )
-    if name == "parakeet":
-        from flow.engines.parakeet import ParakeetTranscriber
-
-        return ParakeetTranscriber()
     raise ValueError(f"unknown engine: {name!r}")

@@ -6,10 +6,8 @@ set -euo pipefail
 cd "$(dirname "$0")"
 
 # --- Parse options ------------------------------------------------------------
-WANT_PARAKEET=0
 for arg in "$@"; do
     case "$arg" in
-        --parakeet) WANT_PARAKEET=1 ;;
         *) echo "Unknown option: $arg" >&2; exit 2 ;;
     esac
 done
@@ -42,10 +40,6 @@ if command -v uv >/dev/null 2>&1; then
     fi
     echo "Installing dependencies with uv…"
     uv pip install --python .venv/bin/python -r requirements.txt
-    if [ "$WANT_PARAKEET" = "1" ]; then
-        echo "Installing parakeet-mlx…"
-        uv pip install --python .venv/bin/python -r requirements-parakeet.txt
-    fi
 else
     if [ ! -x .venv/bin/python ]; then
         echo "Creating .venv…"
@@ -54,10 +48,6 @@ else
     echo "Installing dependencies with pip…"
     .venv/bin/python -m pip install --upgrade pip
     .venv/bin/python -m pip install -r requirements.txt
-    if [ "$WANT_PARAKEET" = "1" ]; then
-        echo "Installing parakeet-mlx…"
-        .venv/bin/python -m pip install -r requirements-parakeet.txt
-    fi
 fi
 
 # --- Pre-download the model for the configured engine -------------------------
@@ -67,22 +57,17 @@ import tomllib
 from pathlib import Path
 
 model = "base.en"
-engine = "whisper"
 path = Path("config.toml")
 if path.exists():
     try:
         data = tomllib.loads(path.read_text())
         model = data.get("whisper", {}).get("model", model)
-        engine = data.get("engine", {}).get("name", engine)
     except Exception:
         pass
 
-if engine == "whisper":
-    from faster_whisper import WhisperModel
-    WhisperModel(model, device="cpu", compute_type="int8")
-    print(f"Whisper model '{model}' is ready.")
-else:
-    print(f"Engine is '{engine}'; its model downloads on first use.")
+from faster_whisper import WhisperModel
+WhisperModel(model, device="cpu", compute_type="int8")
+print(f"Whisper model '{model}' is ready.")
 EOF
 
 # --- Done ----------------------------------------------------------------------

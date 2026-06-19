@@ -20,10 +20,8 @@
 keys = ["ctrl", "alt"]
 
 [engine]
-# Which transcription engine to use: "whisper" (faster-whisper, CPU, light)
-# or "parakeet" (Apple-GPU, faster + more accurate, needs ./setup.sh --parakeet).
-# You can also switch live from the menu-bar icon; that choice is remembered
-# separately and overrides this value.
+# Transcription engine. Currently only "whisper" (faster-whisper, CPU, light)
+# is available.
 name = "whisper"
 
 [whisper]

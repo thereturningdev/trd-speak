@@ -119,7 +119,7 @@ apply changes.
 | Option | Default | Meaning |
 | --- | --- | --- |
 | `hotkey.keys` | `["ctrl", "alt"]` | 1–3 keys that must ALL be held to record; releasing any one stops and transcribes. |
-| `engine.name` | `"whisper"` | Transcription engine: `whisper` or `parakeet` (also switchable from the menu bar). |
+| `engine.name` | `"whisper"` | Transcription engine. Currently only `whisper` (faster-whisper) is available. |
 | `whisper.model` | `"base.en"` | faster-whisper model: `tiny.en`, `base.en`, `small.en`, `medium.en`, … |
 | `whisper.compute_type` | `"int8"` | Quantization for CPU inference; `int8` is fastest and lightest. |
 | `whisper.beam_size` | `1` | Decoding beam width; `1` (greedy) is fastest, higher is slightly more accurate but much slower on long recordings. |
@@ -127,19 +127,10 @@ apply changes.
 | `recording.sample_rate` | `16000` | Microphone sample rate in Hz; Whisper expects 16000 — leave as is. |
 | `paste.restore_delay` | `0.4` | Seconds to wait after Cmd+V before restoring your previous clipboard. |
 
-### Choosing an engine
+### Transcription engine
 
-local-flow ships with two transcription engines, switchable live from the
-menu-bar icon (**Transcription Engine ▸**):
-
-- **faster-whisper** (default) — runs on the CPU, light to install.
-- **Parakeet** — runs on the Apple GPU; faster on short dictations *and* more
-  accurate, with punctuation/capitalization. Heavier: ~1.2 GB resident and a
-  one-time ~2.3 GB model download. Install it with `./setup.sh --parakeet`.
-
-Your menu choice is remembered across restarts (stored under
-`~/Library/Application Support/LocalFlow/`) and overrides `config.toml`.
-Selecting Parakeet before installing it shows a reminder and keeps whisper.
+local-flow transcribes locally with faster-whisper, which runs on the CPU and
+is light to install.
 
 Valid key names for `hotkey.keys`:
 

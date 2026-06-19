@@ -53,16 +53,16 @@ def app(monkeypatch, tmp_path):
 
 def test_switch_from_idle_swaps_and_unloads_old(app, monkeypatch):
     old = FakeEngine("whisper")
-    new = FakeEngine("parakeet")
+    new = FakeEngine("other")
     app.transcriber = old
     app.engine_name = "whisper"
     monkeypatch.setattr(app_mod, "make_transcriber", lambda name, cfg: new)
 
-    app.set_engine("parakeet")
+    app.set_engine("other")
     app._switch_thread.join(timeout=5)
 
     assert app.transcriber is new
-    assert app.engine_name == "parakeet"
+    assert app.engine_name == "other"
     assert new.loaded
     assert old.unloaded
     assert app._state == IDLE
@@ -78,7 +78,7 @@ def test_switch_refused_while_processing(app, monkeypatch):
         app_mod, "make_transcriber", lambda name, cfg: called.append(name)
     )
 
-    app.set_engine("parakeet")
+    app.set_engine("other")
 
     assert app.engine_name == "whisper"
     assert called == []  # never tried to build
@@ -95,7 +95,7 @@ def test_failed_load_reverts(app, monkeypatch):
         app_mod, "make_transcriber", lambda name, cfg: FakeEngine(name, fail=True)
     )
 
-    app.set_engine("parakeet")
+    app.set_engine("other")
     app._switch_thread.join(timeout=5)
 
     assert app.transcriber is old
