@@ -87,6 +87,10 @@ its own. And you can revoke a permission at any time; the icon goes back to
   emoji picker, `Cmd+Ctrl+F` for fullscreen) still work normally. Change the
   combo with `repaste.keys` in `config.toml`. It must not be a subset of your
   dictation combo (and vice versa), or the two would fire together.
+- **Configuration…** (just under Recent Dictations) opens a small panel where
+  you can change the dictate and re-paste shortcuts without editing
+  `config.toml`: click a field, *press* the combo you want, and Save. The new
+  shortcut applies immediately — no restart — and persists across launches.
 - The menu always ends with **Open Log** and **Quit LocalFlow**.
 - The **Dock icon** is visible while the app runs; clicking it opens the
   menu bar menu, so it always leads straight to the controls.

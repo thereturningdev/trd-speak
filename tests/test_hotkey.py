@@ -6,8 +6,15 @@ it. These tests stub the Quartz tap calls — no real tap / Input Monitoring
 permission is needed.
 """
 
+import pytest
+
 import flow.hotkey as hk
-from flow.hotkey import HotkeyListener
+from flow.hotkey import (
+    HotkeyListener,
+    modifier_tokens_from_flags,
+    token_for_keycode,
+    validate_combo,
+)
 
 # Virtual keycodes used by the driver below.
 _CTRL = 59  # left control
@@ -193,3 +200,56 @@ def test_callback_counts_every_event_for_liveness(monkeypatch):
     listener._tap_callback(None, hk.Quartz.kCGEventKeyUp, object(), None)
 
     assert listener.take_event_count() == 2
+
+
+# --- recorder helpers: keycode/flags -> token + combo validation ---------
+
+
+def test_token_for_keycode_modifier():
+    assert token_for_keycode(59) == "ctrl"  # left control
+    assert token_for_keycode(56) == "shift"  # left shift
+
+
+def test_token_for_keycode_letter():
+    assert token_for_keycode(9) == "v"  # ANSI "v"
+
+
+def test_token_for_keycode_named():
+    assert token_for_keycode(49) == "space"
+
+
+def test_token_for_keycode_unmapped_returns_none():
+    assert token_for_keycode(999) is None
+
+
+def test_modifier_tokens_from_flags_single():
+    assert modifier_tokens_from_flags(hk.Quartz.kCGEventFlagMaskControl) == {"ctrl"}
+
+
+def test_modifier_tokens_from_flags_multiple():
+    flags = hk.Quartz.kCGEventFlagMaskControl | hk.Quartz.kCGEventFlagMaskShift
+    assert modifier_tokens_from_flags(flags) == {"ctrl", "shift"}
+
+
+def test_modifier_tokens_from_flags_none():
+    assert modifier_tokens_from_flags(0) == set()
+
+
+def test_validate_combo_accepts_two_and_three_key_with_modifier():
+    assert validate_combo(["ctrl", "shift"]) is None
+    assert validate_combo(["cmd", "ctrl", "v"]) is None
+
+
+def test_validate_combo_rejects_one_key():
+    with pytest.raises(ValueError):
+        validate_combo(["ctrl"])
+
+
+def test_validate_combo_rejects_four_keys():
+    with pytest.raises(ValueError):
+        validate_combo(["cmd", "ctrl", "alt", "shift"])
+
+
+def test_validate_combo_rejects_no_modifier():
+    with pytest.raises(ValueError):
+        validate_combo(["a", "b"])

@@ -18,6 +18,11 @@
 # avoid it unless you have changed that shortcut in System Settings. Must NOT
 # be a subset of the [repaste] combo below, or pressing re-paste would also
 # start a recording.
+#
+# You can also set this shortcut from the menu's "Configuration…" panel
+# (under "Recent Dictations") by pressing the combo you want. That choice is
+# saved to ~/Library/Application Support/LocalFlow/hotkeys.json and takes
+# precedence over the value here, the same way the engine choice does.
 keys = ["ctrl", "shift"]
 
 [repaste]
@@ -30,6 +35,10 @@ keys = ["ctrl", "shift"]
 # accident than a three-key combo — but the tap rule keeps the common cases
 # safe: pressing any other key during the hold (e.g. Cmd+Ctrl+Space for the
 # emoji picker, or Cmd+Ctrl+F for fullscreen) cancels the re-paste.
+#
+# This shortcut can also be set from the menu's "Configuration…" panel; the
+# recorded combo is saved to ~/Library/Application Support/LocalFlow/hotkeys.json
+# and takes precedence over the value here (same model as [hotkey] above).
 keys = ["cmd", "ctrl"]
 
 [engine]

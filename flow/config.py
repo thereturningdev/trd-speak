@@ -25,8 +25,14 @@ def _default_path() -> Path:
     return Path(__file__).resolve().parent.parent / "config.toml"
 
 
-def _validate_keys(value: object, setting: str) -> list[str]:
-    """Validate a hotkey combo: a list of 1-3 non-empty strings, lower-cased."""
+def validate_keys(value: object, setting: str) -> list[str]:
+    """Validate a hotkey combo: a list of 1-3 non-empty strings, lower-cased.
+
+    Raises ValueError if `value` is not a list of 1-3 non-empty strings.
+    Returns the tokens lower-cased. Shared by config.toml loading,
+    flow.hotkey_state.resolve, and the settings window so all three apply
+    the exact same 1-3-token rule.
+    """
     if (
         not isinstance(value, list)
         or not 1 <= len(value) <= 3
@@ -34,6 +40,11 @@ def _validate_keys(value: object, setting: str) -> list[str]:
     ):
         raise ValueError(f"{setting} must be a list of 1-3 non-empty strings")
     return [k.lower() for k in value]
+
+
+# Backward-compatible alias for the previously-private name; existing internal
+# call sites (load_config) and any external importer keep working.
+_validate_keys = validate_keys
 
 
 def load_config(path: str | None = None) -> Config:

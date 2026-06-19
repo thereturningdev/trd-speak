@@ -42,7 +42,7 @@ import AppKit
 import Foundation
 from Foundation import NSObject
 
-from flow import engine_state, paster, permissions
+from flow import engine_state, hotkey_state, paster, permissions
 from flow.app import App
 from flow.config import Config
 from flow.engines import ENGINE_NAMES, ENGINES
@@ -262,6 +262,23 @@ class _Delegate(NSObject):
         if logic is not None:
             logic.history.clear()
 
+    def openConfig_(self, _sender) -> None:
+        """Configuration… row clicked: lazily build and raise the settings
+        window controller, keeping a strong reference (controllers/windows must
+        not be GC'd)."""
+        logic = getattr(self, "logic", None)
+        menubar = getattr(self, "menubar", None)
+        if logic is None or menubar is None:
+            return
+        controller = getattr(self, "_settings_controller", None)
+        if controller is None:
+            from flow.settings_window import SettingsWindowController
+
+            controller = self._settings_controller = SettingsWindowController(
+                logic, menubar
+            )
+        controller.open()
+
     def applicationShouldHandleReopen_hasVisibleWindows_(self, _app, _flag):
         # Dock icon clicked while running: open the status item's menu so
         # the Dock leads straight to the controls.
@@ -388,6 +405,14 @@ class MenuBar:
         self._history_root.setSubmenu_(history_menu)
         menu.addItem_(self._history_root)
 
+        # "Configuration…" row: opens the settings window. Same visibility
+        # gate as the history/engine rows (normal fully-granted state only).
+        self._config_item = AppKit.NSMenuItem.alloc().initWithTitle_action_keyEquivalent_(
+            "Configuration…", "openConfig:", "")
+        self._config_item.setTarget_(delegate)
+        self._config_item.setHidden_(True)
+        menu.addItem_(self._config_item)
+
         # Transcription engine picker (registry-driven).
         self._engine_root = AppKit.NSMenuItem.alloc().initWithTitle_action_keyEquivalent_(
             "Transcription Engine", None, ""
@@ -449,6 +474,17 @@ class MenuBar:
     def update_engine(self, active_name: str) -> None:
         """Thread-safe: tick the active engine and refresh enabled state."""
         self._active_engine = active_name
+        _on_main(self._render)
+
+    def update_combo(self, dictate_keys: list[str], repaste_keys: list[str]) -> None:
+        """Refresh the header's dictate combo ("Ready — hold … to dictate")
+        after a shortcut change. Re-renders on the main thread.
+
+        Only self._combo (the dictate combo in the "ready" header text) needs
+        updating — the re-paste combo is not shown in the header. The
+        repaste_keys parameter is kept for a stable, future-proof call site.
+        """
+        self._combo = "+".join(dictate_keys)
         _on_main(self._render)
 
     def _render(self) -> None:
@@ -530,6 +566,7 @@ class MenuBar:
         # active engine is checked; all rows disabled unless idle/ready.
         show_engine = not (missing or mic_unknown or restart)
         self._history_root.setHidden_(not show_engine)
+        self._config_item.setHidden_(not show_engine)
         self._engine_root.setHidden_(not show_engine)
         self._engine_separator.setHidden_(not show_engine)
         ready = self._app_state == "ready"
@@ -562,6 +599,10 @@ def run(config: Config) -> None:
         "LocalFlow push-to-talk hotkey must keep receiving key events",
     )
 
+    # The settings-window/menu choice (App Support JSON) takes precedence over
+    # config.toml, per-combo. Resolve BEFORE the combo display string and the
+    # App build so both reflect the saved shortcuts.
+    config.keys, config.repaste_keys = hotkey_state.resolve(config)
     combo = "+".join(config.keys)
     ui = MenuBar(combo, delegate)
     delegate.menubar = ui  # for applicationShouldHandleReopen

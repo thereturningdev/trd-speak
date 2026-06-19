@@ -96,6 +96,60 @@ def _keycodes_for_token(token: str) -> tuple[int, ...]:
     return (_CHAR_KEYCODES[token],)
 
 
+# Inverted lookup tables for the recorder (keycode -> token). Built once at
+# module load from the authoritative tables above; never rebuilt per call.
+# (_MODIFIER_KEYCODES is already keyed by keycode, so it is used directly.)
+_KEYCODE_TO_NAMED = {v: k for k, v in _NAMED_KEYCODES.items()}
+_KEYCODE_TO_CHAR = {v: k for k, v in _CHAR_KEYCODES.items()}
+
+
+def token_for_keycode(keycode: int) -> str | None:
+    """Map an NSEvent/Quartz virtual keycode to a canonical hotkey token,
+    or None if the keycode is not one this app recognizes.
+
+    Inverts the modifier, named-key, and ANSI-char keycode tables (the same
+    tables HotkeyListener matches against). Modifier keycodes win over any
+    overlap. NSEvent keyCodes equal Quartz virtual keycodes, so this is
+    authoritative for the recorder's NSEvent capture.
+    """
+    if keycode in _MODIFIER_KEYCODES:
+        return _MODIFIER_KEYCODES[keycode]
+    if keycode in _KEYCODE_TO_NAMED:
+        return _KEYCODE_TO_NAMED[keycode]
+    return _KEYCODE_TO_CHAR.get(keycode)
+
+
+def modifier_tokens_from_flags(flags: int) -> set[str]:
+    """The set of modifier tokens currently down for an NSEvent modifierFlags
+    (or Quartz event-flags) value, using _MODIFIER_MASKS. NSEvent and Quartz
+    share the same mask bits, so one mapping serves both."""
+    return {token for token, mask in _MODIFIER_MASKS.items() if flags & mask}
+
+
+def validate_combo(
+    keys: list[str],
+    *,
+    min_keys: int = 2,
+    max_keys: int = 3,
+    require_modifier: bool = True,
+) -> None:
+    """Raise ValueError with a human-readable message if `keys` is an
+    unusable global shortcut: too few keys, too many keys, or (when
+    require_modifier) no modifier. Returns None on success.
+
+    Used by the settings window's Save validation and unit-tested directly.
+    A 1-key global hotkey is unusable, hence min_keys defaults to 2.
+    """
+    if len(keys) < min_keys:
+        raise ValueError(f"A shortcut needs at least {min_keys} keys.")
+    if len(keys) > max_keys:
+        raise ValueError(f"A shortcut can have at most {max_keys} keys.")
+    if require_modifier and not any(k in _MODIFIER_TOKENS for k in keys):
+        raise ValueError(
+            "A shortcut needs at least one modifier (cmd, ctrl, alt, or shift)."
+        )
+
+
 class HotkeyListener:
     """Fires callbacks when a combo of keys is held and then released.
 
