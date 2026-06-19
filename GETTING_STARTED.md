@@ -121,6 +121,11 @@ Restart the app (menu bar icon → Quit LocalFlow, then `open LocalFlow.app`)
 to apply changes. The full option list is in the
 [README](README.md#configuration).
 
+To change just the hotkeys, you don't even need the file: menu bar icon →
+**Configuration…** (under Recent Dictations) opens a panel where you click a
+field, *press* the shortcut you want, and Save. It applies right away and is
+remembered next time.
+
 **Start at login:** System Settings → General → Login Items → add
 LocalFlow.
 
@@ -134,6 +139,7 @@ LocalFlow.
 | See what it's doing | menu bar icon → **Open Log** |
 | Recover a lost dictation | menu bar icon → **Recent Dictations** → click an entry to copy it, then paste into the right window |
 | Re-paste it into the right window | switch to the right window and **tap Cmd+Ctrl** (press and release, nothing else) to insert your most recent dictation directly |
+| Change a shortcut | menu bar icon → **Configuration…** → click a field, press the combo, Save (applies immediately) |
 
 ## If something doesn't work
 

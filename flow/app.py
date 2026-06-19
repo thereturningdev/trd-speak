@@ -262,6 +262,51 @@ class App:
                 self._state = IDLE
             self._notify("ready")
 
+    def suspend_hotkeys(self) -> None:
+        """Stop both global event taps (settings window opening).
+
+        Listen-only taps keep observing keys even when a window is focused, so a
+        combo pressed to RECORD a shortcut would also fire the live listener.
+        Suspending both makes the window's local NSEvent monitor the only
+        listener active while recording. Main thread only.
+        """
+        self.hotkey.stop()
+        self.repaste_hotkey.stop()
+
+    def resume_hotkeys(self) -> None:
+        """Restart both taps with the unchanged config keys (Cancel / close
+        without save). start() recreates each tap after stop() cleared it.
+        Main thread only.
+        """
+        self.hotkey.start()
+        self.repaste_hotkey.start()
+
+    def set_hotkeys(self, dictate_keys: list[str], repaste_keys: list[str]) -> None:
+        """Apply new shortcuts immediately (Save): stop both taps, rebuild both
+        HotkeyListener objects with the new keys and the SAME callbacks, start
+        both, and update self.config.keys / self.config.repaste_keys.
+
+        Main thread only — the same thread as the menu poll/watchdog, so there is
+        no race. The watchdog reads logic.hotkey / logic.repaste_hotkey fresh each
+        tick and picks up the new objects automatically. After this call the new
+        taps are live, so no separate resume_hotkeys is needed.
+        """
+        self.hotkey.stop()
+        self.repaste_hotkey.stop()
+        self.hotkey = HotkeyListener(
+            keys=dictate_keys,
+            on_activate=self._on_activate,
+            on_deactivate=self._on_deactivate,
+        )
+        self.repaste_hotkey = HotkeyListener(
+            keys=repaste_keys,
+            on_trigger=self._on_repaste,
+        )
+        self.hotkey.start()
+        self.repaste_hotkey.start()
+        self.config.keys = list(dictate_keys)
+        self.config.repaste_keys = list(repaste_keys)
+
     def start(self) -> None:
         """Load the active engine and start the hotkey listener (call off-main)."""
         print(f"Loading engine {self.engine_name}…")
