@@ -132,6 +132,7 @@ LocalFlow.
 | Stop | menu bar icon → **Quit LocalFlow** (or `./stop.sh`) |
 | Is it running? | 🎤 in the menu bar (and a Dock icon) |
 | See what it's doing | menu bar icon → **Open Log** |
+| Recover a lost dictation | menu bar icon → **Recent Dictations** → click an entry to copy it, then paste into the right window |
 
 ## If something doesn't work
 

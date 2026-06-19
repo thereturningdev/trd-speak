@@ -73,6 +73,11 @@ its own. And you can revoke a permission at any time; the icon goes back to
 
 - The **menu bar icon** shows the state: ⚠️ permissions missing, ⏳ loading
   the model, 🎤 ready, 🔴 recording, ✍️ transcribing.
+- **Recent Dictations** lists your last 10 dictations (newest first). Click
+  one to copy its full text to the clipboard — so you can switch to the right
+  window and paste it yourself when a dictation landed in the wrong app (there
+  is no auto-paste). "Clear Recent Dictations" empties the list. The history
+  is in memory only and is gone when you quit.
 - The menu always ends with **Open Log** and **Quit LocalFlow**.
 - The **Dock icon** is visible while the app runs; clicking it opens the
   menu bar menu, so it always leads straight to the controls.

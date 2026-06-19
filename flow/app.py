@@ -7,6 +7,7 @@ from typing import Callable
 from flow import engine_state, permissions
 from flow.config import Config
 from flow.engines import EngineUnavailable, make_transcriber
+from flow.history import History
 from flow.hotkey import HotkeyListener
 from flow.paster import paste_text
 from flow.recorder import Recorder
@@ -27,6 +28,8 @@ class App:
         )
         self.engine_name = config.engine
         self.transcriber = make_transcriber(self.engine_name, config)
+        # Recent-dictations history (in-memory, menu-bar surfaced).
+        self.history = History()
         self._switch_thread = None
         self._dictation_thread = None
         # Signals the active dictation worker to stop recording and process.
@@ -131,6 +134,10 @@ class App:
             elapsed = time.monotonic() - start
             timing = f"[{audio_secs:.0f}s audio, transcribed in {elapsed:.1f}s]"
             if text:
+                # Capture BEFORE the paste attempt: a dictation that fails to
+                # paste (keys still held, Accessibility missing) is exactly the
+                # kind the user needs to recover from the history.
+                self.history.add(text)
                 shown = text if len(text) <= 80 else text[:77] + "…"
                 if not self.can_paste():
                     print(

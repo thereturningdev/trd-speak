@@ -42,7 +42,7 @@ import AppKit
 import Foundation
 from Foundation import NSObject
 
-from flow import engine_state, permissions
+from flow import engine_state, paster, permissions
 from flow.app import App
 from flow.config import Config
 from flow.engines import ENGINE_NAMES, ENGINES
@@ -248,6 +248,20 @@ class _Delegate(NSObject):
         if logic is not None:
             logic.set_engine(name)
 
+    def copyDictation_(self, sender) -> None:
+        """Recent-dictations row clicked: copy its full text to the clipboard
+        and LEAVE it there (no save/restore — the whole point is to make the
+        text ready to paste into the right window)."""
+        text = str(sender.representedObject())
+        paster.set_clipboard(text)
+        _notify("Copied — switch to your window and paste")
+
+    def clearDictations_(self, _sender) -> None:
+        """"Clear Recent Dictations" row clicked: wipe the history on demand."""
+        logic = getattr(self, "logic", None)
+        if logic is not None:
+            logic.history.clear()
+
     def applicationShouldHandleReopen_hasVisibleWindows_(self, _app, _flag):
         # Dock icon clicked while running: open the status item's menu so
         # the Dock leads straight to the controls.
@@ -255,6 +269,55 @@ class _Delegate(NSObject):
         if menubar is not None:
             menubar.open_menu()
         return False
+
+
+def _row_title(text: str, limit: int = 60) -> str:
+    """One-line, truncated label for a Recent Dictations row.
+
+    Newlines and runs of whitespace collapse to single spaces so the row stays
+    on one line; the full text is preserved in the tooltip and copied verbatim.
+    """
+    flat = " ".join(text.split())
+    if len(flat) > limit:
+        return flat[:limit].rstrip() + "…"
+    return flat
+
+
+class _HistoryMenuDelegate(NSObject):
+    """Rebuilds the Recent Dictations submenu on the main thread each time it
+    opens, reading the thread-safe ``History`` store. The menu object is thus
+    never mutated from a worker thread — only here, right before display. Set
+    ``_target`` (the action ``_Delegate``) after init.
+    """
+
+    def menuNeedsUpdate_(self, menu) -> None:
+        target = getattr(self, "_target", None)
+        logic = getattr(target, "logic", None)
+        history = getattr(logic, "history", None)
+        items = history.items() if history is not None else []
+        menu.removeAllItems()
+        if items:
+            for text in items:
+                row = AppKit.NSMenuItem.alloc().initWithTitle_action_keyEquivalent_(
+                    _row_title(text), "copyDictation:", ""
+                )
+                row.setTarget_(target)
+                row.setToolTip_(text)
+                row.setRepresentedObject_(text)
+                menu.addItem_(row)
+        else:
+            empty = AppKit.NSMenuItem.alloc().initWithTitle_action_keyEquivalent_(
+                "No dictations yet", None, ""
+            )
+            empty.setEnabled_(False)
+            menu.addItem_(empty)
+        menu.addItem_(AppKit.NSMenuItem.separatorItem())
+        clear = AppKit.NSMenuItem.alloc().initWithTitle_action_keyEquivalent_(
+            "Clear Recent Dictations", "clearDictations:", ""
+        )
+        clear.setTarget_(target)
+        clear.setEnabled_(bool(items))
+        menu.addItem_(clear)
 
 
 class MenuBar:
@@ -309,6 +372,21 @@ class MenuBar:
         self._perm_separator = AppKit.NSMenuItem.separatorItem()
         self._perm_separator.setHidden_(True)
         menu.addItem_(self._perm_separator)
+
+        # Recent Dictations submenu (above the engine picker). Populated lazily
+        # by its delegate on open, so it is always fresh and only ever mutated
+        # on the main thread.
+        self._history_root = AppKit.NSMenuItem.alloc().initWithTitle_action_keyEquivalent_(
+            "Recent Dictations", None, ""
+        )
+        history_menu = AppKit.NSMenu.alloc().init()
+        history_menu.setAutoenablesItems_(False)
+        # NSMenu holds its delegate weakly — keep a strong ref for the app's life.
+        self._history_delegate = _HistoryMenuDelegate.alloc().init()
+        self._history_delegate._target = delegate
+        history_menu.setDelegate_(self._history_delegate)
+        self._history_root.setSubmenu_(history_menu)
+        menu.addItem_(self._history_root)
 
         # Transcription engine picker (registry-driven).
         self._engine_root = AppKit.NSMenuItem.alloc().initWithTitle_action_keyEquivalent_(
@@ -451,6 +529,7 @@ class MenuBar:
         # Engine picker: visible only in the normal (fully granted) state; the
         # active engine is checked; all rows disabled unless idle/ready.
         show_engine = not (missing or mic_unknown or restart)
+        self._history_root.setHidden_(not show_engine)
         self._engine_root.setHidden_(not show_engine)
         self._engine_separator.setHidden_(not show_engine)
         ready = self._app_state == "ready"

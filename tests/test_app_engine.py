@@ -199,3 +199,59 @@ def test_full_dictation_cycle_records_transcribes_and_pastes(app, monkeypatch):
 
     assert _wait_until(lambda: app._state == IDLE, 5)
     assert pasted == ["x "]
+    assert app.history.items() == ["x"]  # captured (raw, no trailing space)
+
+
+def test_empty_transcription_is_not_recorded(app, monkeypatch):
+    """A 'heard nothing' result must not land in the history."""
+    monkeypatch.setattr(app_mod, "paste_text", lambda text, restore_delay=0: None)
+    app.can_paste = lambda: True
+    app.hotkey.wait_all_released = lambda timeout=2.0: True
+
+    class FakeRec:
+        def start(self):
+            pass
+
+        def stop(self):
+            return np.zeros(16000, dtype=np.float32)
+
+    app.recorder = FakeRec()
+    silent = FakeEngine("whisper")
+    silent.transcribe = lambda audio: ""  # heard nothing
+    app.transcriber = silent
+
+    app._on_activate()
+    assert _wait_until(lambda: app._state == RECORDING, 2)
+    app._on_deactivate()
+
+    assert _wait_until(lambda: app._state == IDLE, 5)
+    assert app.history.items() == []
+
+
+def test_paste_skipped_dictation_is_still_recorded(app, monkeypatch):
+    """A dictation that fails to paste (Accessibility missing, trigger keys
+    still held) must STILL be captured — those are prime recovery cases."""
+    pasted = []
+    monkeypatch.setattr(
+        app_mod, "paste_text", lambda text, restore_delay=0: pasted.append(text)
+    )
+    app.can_paste = lambda: False  # paste refused
+    app.hotkey.wait_all_released = lambda timeout=2.0: True
+
+    class FakeRec:
+        def start(self):
+            pass
+
+        def stop(self):
+            return np.zeros(16000, dtype=np.float32)
+
+    app.recorder = FakeRec()
+    app.transcriber = FakeEngine("whisper")  # transcribe -> "x"
+
+    app._on_activate()
+    assert _wait_until(lambda: app._state == RECORDING, 2)
+    app._on_deactivate()
+
+    assert _wait_until(lambda: app._state == IDLE, 5)
+    assert pasted == []  # never pasted
+    assert app.history.items() == ["x"]  # but recorded
