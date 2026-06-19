@@ -6,13 +6,17 @@ from flow.config import Config, load_config
 
 
 def test_default_repaste_keys():
-    assert Config().repaste_keys == ["cmd", "ctrl", "shift"]
+    assert Config().repaste_keys == ["cmd", "ctrl"]
+
+
+def test_default_hotkey_keys():
+    assert Config().keys == ["ctrl", "shift"]
 
 
 def test_missing_repaste_table_keeps_default(tmp_path):
     cfg_file = tmp_path / "config.toml"
     cfg_file.write_text('[hotkey]\nkeys = ["ctrl", "alt"]\n')
-    assert load_config(str(cfg_file)).repaste_keys == ["cmd", "ctrl", "shift"]
+    assert load_config(str(cfg_file)).repaste_keys == ["cmd", "ctrl"]
 
 
 def test_load_repaste_keys_from_toml(tmp_path):

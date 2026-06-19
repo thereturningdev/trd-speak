@@ -1,8 +1,16 @@
 # Re-paste last dictation hotkey — design
 
 **Date:** 2026-06-19
-**Status:** Approved (pending spec review)
+**Status:** Implemented.
 **Issue:** #2 — "add a shortcut to replace the last insertion"
+
+> **Shipped-default note.** The defaults were later changed, at the
+> maintainer's request, to `ctrl+shift` (dictate) / `cmd+ctrl` (re-paste) so the
+> two combos don't overlap on the maintainer's setup. The design below describes
+> the original `cmd+ctrl+shift` re-paste default and its screenshot-prefix
+> rationale; the clean-tap mechanism it specifies is unchanged and is exactly
+> what keeps the two-key `cmd+ctrl` default from firing on combos like
+> `Cmd+Ctrl+Space`.
 
 ## Problem
 

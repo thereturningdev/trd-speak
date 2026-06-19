@@ -11,8 +11,8 @@ class Config:
 
     model: str = "base.en"
     engine: str = "whisper"
-    keys: list[str] = field(default_factory=lambda: ["ctrl", "alt"])
-    repaste_keys: list[str] = field(default_factory=lambda: ["cmd", "ctrl", "shift"])
+    keys: list[str] = field(default_factory=lambda: ["ctrl", "shift"])
+    repaste_keys: list[str] = field(default_factory=lambda: ["cmd", "ctrl"])
     max_seconds: int = 180
     sample_rate: int = 16000
     compute_type: str = "int8"

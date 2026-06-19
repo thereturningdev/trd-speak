@@ -12,12 +12,13 @@
 #   Others:     "space", "tab", "enter", "esc", "f1" .. "f20"
 #   Or any single character, e.g. "z"
 #
-# Modifier-only combos (like the default ctrl+alt) are the most reliable on
-# macOS: they don't type anything into the focused app and rarely collide
-# with system shortcuts. Note: ctrl+right conflicts with the default
-# Mission Control "Move right a space" shortcut — avoid it unless you have
-# changed that shortcut in System Settings.
-keys = ["ctrl", "alt"]
+# Modifier-only combos (like the default ctrl+shift) are the most reliable on
+# macOS: they don't type anything into the focused app. Note: ctrl+right
+# conflicts with the default Mission Control "Move right a space" shortcut —
+# avoid it unless you have changed that shortcut in System Settings. Must NOT
+# be a subset of the [repaste] combo below, or pressing re-paste would also
+# start a recording.
+keys = ["ctrl", "shift"]
 
 [repaste]
 # Keys for the "re-paste the last dictation" shortcut. If a dictation lands in
@@ -25,10 +26,11 @@ keys = ["ctrl", "alt"]
 # release without pressing anything else) to insert your most recent dictation
 # there. Same key names and 1-to-3-key rule as [hotkey] above.
 #
-# The default cmd+ctrl+shift is the prefix of the macOS screenshot shortcuts
-# (Cmd+Ctrl+Shift+3/4/5); that is handled — pressing a number completes a
-# screenshot and is NOT treated as a re-paste, so the two never collide.
-keys = ["cmd", "ctrl", "shift"]
+# The default cmd+ctrl is only two keys, so it is a little easier to trigger by
+# accident than a three-key combo — but the tap rule keeps the common cases
+# safe: pressing any other key during the hold (e.g. Cmd+Ctrl+Space for the
+# emoji picker, or Cmd+Ctrl+F for fullscreen) cancels the re-paste.
+keys = ["cmd", "ctrl"]
 
 [engine]
 # Transcription engine. Currently only "whisper" (faster-whisper, CPU, light)

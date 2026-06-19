@@ -6,7 +6,7 @@ account — everything runs on your machine.
 
 ## What you'll end up with
 
-Hold **Ctrl+Alt**, speak, release — your words appear at your cursor, in any
+Hold **Ctrl+Shift**, speak, release — your words appear at your cursor, in any
 app: a terminal, a browser, a document. A 🎤 icon in the menu bar shows the
 app is running.
 
@@ -86,7 +86,7 @@ worry — the menu always shows exactly the step that still needs fixing.)
 ## 4. Dictate
 
 1. Click into any text field (your editor, browser, terminal, chat…).
-2. **Hold Ctrl+Alt** — the menu bar icon turns 🔴 and the mic indicator
+2. **Hold Ctrl+Shift** — the menu bar icon turns 🔴 and the mic indicator
    lights up.
 3. Speak normally.
 4. **Release** — the icon shows ✍️ for a moment, then your words are pasted
@@ -108,7 +108,7 @@ The two settings most people change:
 
 ```toml
 [hotkey]
-keys = ["ctrl", "alt"]    # e.g. ["ctrl", "shift"] or ["f19"]
+keys = ["ctrl", "shift"]  # e.g. ["ctrl", "alt"] or ["f19"]
 
 [whisper]
 model = "base.en"         # "tiny.en" = faster, "small.en" = more accurate
@@ -133,7 +133,7 @@ LocalFlow.
 | Is it running? | 🎤 in the menu bar (and a Dock icon) |
 | See what it's doing | menu bar icon → **Open Log** |
 | Recover a lost dictation | menu bar icon → **Recent Dictations** → click an entry to copy it, then paste into the right window |
-| Re-paste it into the right window | switch to the right window and **tap Cmd+Ctrl+Shift** (press and release, nothing else) to insert your most recent dictation directly |
+| Re-paste it into the right window | switch to the right window and **tap Cmd+Ctrl** (press and release, nothing else) to insert your most recent dictation directly |
 
 ## If something doesn't work
 
