@@ -78,6 +78,14 @@ its own. And you can revoke a permission at any time; the icon goes back to
   window and paste it yourself when a dictation landed in the wrong app (there
   is no auto-paste). "Clear Recent Dictations" empties the list. The history
   is in memory only and is gone when you quit.
+- **Re-paste the last dictation** with a global shortcut (default
+  `cmd+ctrl+shift`): if a dictation landed in the wrong window, switch to the
+  right one and *tap* the combo — press and release it without pressing
+  anything else — to insert your most recent dictation there. Unlike Recent
+  Dictations, this pastes directly, no menu. The default shares a prefix with
+  the macOS screenshot shortcuts (Cmd+Ctrl+Shift+3/4/5), but pressing a number
+  completes a screenshot instead of re-pasting, so they never collide. Change
+  the combo with `repaste.keys` in `config.toml`.
 - The menu always ends with **Open Log** and **Quit LocalFlow**.
 - The **Dock icon** is visible while the app runs; clicking it opens the
   menu bar menu, so it always leads straight to the controls.
@@ -124,6 +132,7 @@ apply changes.
 | Option | Default | Meaning |
 | --- | --- | --- |
 | `hotkey.keys` | `["ctrl", "alt"]` | 1–3 keys that must ALL be held to record; releasing any one stops and transcribes. |
+| `repaste.keys` | `["cmd", "ctrl", "shift"]` | 1–3 keys for the re-paste shortcut; tap them (no other key) to re-insert your last dictation into the focused window. Same key names as `hotkey.keys`. |
 | `engine.name` | `"whisper"` | Transcription engine. Currently only `whisper` (faster-whisper) is available. |
 | `whisper.model` | `"base.en"` | faster-whisper model: `tiny.en`, `base.en`, `small.en`, `medium.en`, … |
 | `whisper.compute_type` | `"int8"` | Quantization for CPU inference; `int8` is fastest and lightest. |

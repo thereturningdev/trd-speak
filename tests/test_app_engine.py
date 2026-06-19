@@ -255,3 +255,82 @@ def test_paste_skipped_dictation_is_still_recorded(app, monkeypatch):
     assert _wait_until(lambda: app._state == IDLE, 5)
     assert pasted == []  # never pasted
     assert app.history.items() == ["x"]  # but recorded
+
+
+# --- re-paste-last-dictation hotkey --------------------------------------
+
+
+def _repaste_ready(app, monkeypatch):
+    """Wire an app so _do_repaste can run deterministically; return `pasted`."""
+    pasted = []
+    monkeypatch.setattr(
+        app_mod, "paste_text", lambda text, restore_delay=0: pasted.append(text)
+    )
+    app.can_paste = lambda: True
+    app.repaste_hotkey.wait_all_released = lambda timeout=2.0: True
+    app._state = IDLE
+    return pasted
+
+
+def test_repaste_pastes_most_recent_dictation(app, monkeypatch):
+    """The hotkey re-pastes the newest dictation (with a trailing space)."""
+    pasted = _repaste_ready(app, monkeypatch)
+    app.history.add("first")
+    app.history.add("second")
+
+    app._do_repaste()
+
+    assert pasted == ["second "]
+    assert app._state == IDLE
+
+
+def test_repaste_noop_on_empty_history(app, monkeypatch):
+    """Nothing to re-paste: nothing pasted, the user is notified."""
+    pasted = _repaste_ready(app, monkeypatch)
+    notes = []
+    app.notify = notes.append
+
+    app._do_repaste()
+
+    assert pasted == []
+    assert notes  # told there was nothing
+    assert app._state == IDLE
+
+
+def test_repaste_skipped_without_paste_permission(app, monkeypatch):
+    """No Accessibility permission: refuse, as the dictation flow does."""
+    pasted = _repaste_ready(app, monkeypatch)
+    app.can_paste = lambda: False
+    app.history.add("hello")
+
+    app._do_repaste()
+
+    assert pasted == []
+    assert app._state == IDLE
+
+
+def test_repaste_skipped_when_busy(app, monkeypatch):
+    """A re-paste must never race an in-flight dictation's clipboard work."""
+    pasted = _repaste_ready(app, monkeypatch)
+    app.history.add("hello")
+    notes = []
+    app.notify = notes.append
+    app._state = PROCESSING  # mid-dictation
+
+    app._do_repaste()
+
+    assert pasted == []
+    assert notes
+    assert app._state == PROCESSING  # untouched
+
+
+def test_on_repaste_pastes_via_worker_thread(app, monkeypatch):
+    """_on_repaste runs on the run-loop thread: it must offload and return,
+    and the worker performs the paste."""
+    pasted = _repaste_ready(app, monkeypatch)
+    app.history.add("recovered")
+
+    app._on_repaste()  # spawns the worker
+
+    assert _wait_until(lambda: pasted == ["recovered "], 5)
+    assert _wait_until(lambda: app._state == IDLE, 5)

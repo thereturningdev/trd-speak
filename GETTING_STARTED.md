@@ -133,6 +133,7 @@ LocalFlow.
 | Is it running? | 🎤 in the menu bar (and a Dock icon) |
 | See what it's doing | menu bar icon → **Open Log** |
 | Recover a lost dictation | menu bar icon → **Recent Dictations** → click an entry to copy it, then paste into the right window |
+| Re-paste it into the right window | switch to the right window and **tap Cmd+Ctrl+Shift** (press and release, nothing else) to insert your most recent dictation directly |
 
 ## If something doesn't work
 

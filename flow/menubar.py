@@ -643,12 +643,18 @@ def run(config: Config) -> None:
             try:
                 if logic.hotkey.ensure_enabled():
                     print("Hotkey tap had been disabled — re-enabled by watchdog.")
+                if logic.repaste_hotkey.ensure_enabled():
+                    print("Re-paste tap had been disabled — re-enabled by watchdog.")
                 # Liveness heartbeat (~30 s): a long run of zeros while the app
                 # is in use means the tap has gone silent — direct evidence of
                 # the "stops after a while" freeze, no keystrokes logged.
                 if state["timer_fires"] % 15 == 0:
                     n = logic.hotkey.take_event_count()
-                    print(f"Hotkey tap heartbeat: {n} events in the last ~30 s.")
+                    m = logic.repaste_hotkey.take_event_count()
+                    print(
+                        f"Hotkey tap heartbeat: {n} events "
+                        f"(re-paste tap: {m}) in the last ~30 s."
+                    )
             except Exception as exc:
                 print(f"Hotkey watchdog error: {exc}")
         # 2 s while anything is missing or the boot has not finished; back

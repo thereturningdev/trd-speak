@@ -19,6 +19,17 @@
 # changed that shortcut in System Settings.
 keys = ["ctrl", "alt"]
 
+[repaste]
+# Keys for the "re-paste the last dictation" shortcut. If a dictation lands in
+# the wrong window, switch to the right one and TAP this combo (press and
+# release without pressing anything else) to insert your most recent dictation
+# there. Same key names and 1-to-3-key rule as [hotkey] above.
+#
+# The default cmd+ctrl+shift is the prefix of the macOS screenshot shortcuts
+# (Cmd+Ctrl+Shift+3/4/5); that is handled — pressing a number completes a
+# screenshot and is NOT treated as a re-paste, so the two never collide.
+keys = ["cmd", "ctrl", "shift"]
+
 [engine]
 # Transcription engine. Currently only "whisper" (faster-whisper, CPU, light)
 # is available.

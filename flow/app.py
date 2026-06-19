@@ -39,6 +39,12 @@ class App:
             on_activate=self._on_activate,
             on_deactivate=self._on_deactivate,
         )
+        # Second, independent listener (its own tap): a clean tap of this combo
+        # re-pastes the most recent dictation into the focused window.
+        self.repaste_hotkey = HotkeyListener(
+            keys=config.repaste_keys,
+            on_trigger=self._on_repaste,
+        )
         self._state = IDLE
         self._lock = threading.Lock()
         # Optional UI hooks.
@@ -162,6 +168,54 @@ class App:
                 self._state = IDLE
             self._notify("ready")
 
+    def _on_repaste(self) -> None:
+        """Re-paste hotkey tapped: re-insert the most recent dictation.
+
+        Runs on the main run-loop thread (the re-paste tap's callback), so it
+        MUST return immediately — the blocking work (waiting for the keys to
+        release, then the clipboard paste) is handed to a worker thread, exactly
+        like _on_activate.
+        """
+        threading.Thread(target=self._do_repaste, daemon=True).start()
+
+    def _do_repaste(self) -> None:
+        """Paste the newest dictation into the focused window, on a worker.
+
+        Only runs when the app is IDLE so it never races an in-flight
+        dictation's clipboard save/restore.
+        """
+        # Wait for the combo to be fully released so the synthesized Cmd+V is a
+        # plain paste, not Cmd+<modifiers>+V.
+        self.repaste_hotkey.wait_all_released()
+        with self._lock:
+            if self._state != IDLE:
+                self.notify("Finish the current dictation first.")
+                return
+            self._state = PROCESSING
+        self._notify("processing")
+        try:
+            items = self.history.items()
+            if not items:
+                print("Re-paste requested but the history is empty.")
+                self.notify("No recent dictation to re-paste.")
+                return
+            text = items[0]
+            shown = text if len(text) <= 80 else text[:77] + "…"
+            if not self.can_paste():
+                print(
+                    f"Re-paste CANNOT proceed — Accessibility permission is "
+                    f"missing. Text was: {shown}"
+                )
+                return
+            paste_text(text + " ", restore_delay=self.config.paste_restore_delay)
+            print(f"Re-pasted: {shown}")
+        except Exception as exc:
+            print(f"Error during re-paste: {exc}")
+        finally:
+            with self._lock:
+                self._state = IDLE
+            self._notify("ready")
+
     def set_engine(self, name: str) -> None:
         """Switch transcription engine: load+warm new, then unload old.
 
@@ -220,6 +274,16 @@ class App:
             self.transcriber = make_transcriber("whisper", self.config)
             self.transcriber.load()
         self.hotkey.start()
+        # The re-paste tap is a convenience: if it cannot start, log and carry
+        # on — push-to-talk must not be held hostage to it (both need the same
+        # Input Monitoring grant, so in practice they succeed or fail together).
+        try:
+            self.repaste_hotkey.start()
+        except Exception as exc:
+            print(f"Could not start the re-paste hotkey listener: {exc}")
+        else:
+            repaste_combo = "+".join(self.config.repaste_keys)
+            print(f"Tap {repaste_combo} to re-paste the last dictation.")
         combo = "+".join(self.config.keys)
         print(f"Ready — hold {combo} to dictate.")
         if self.on_engine is not None:
@@ -227,8 +291,9 @@ class App:
         self._notify("ready")
 
     def shutdown(self) -> None:
-        """Stop the listener and any in-flight recording."""
+        """Stop the listeners and any in-flight recording."""
         self.hotkey.stop()
+        self.repaste_hotkey.stop()
         try:
             self.recorder.stop()
         except Exception:

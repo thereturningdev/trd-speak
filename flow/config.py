@@ -12,6 +12,7 @@ class Config:
     model: str = "base.en"
     engine: str = "whisper"
     keys: list[str] = field(default_factory=lambda: ["ctrl", "alt"])
+    repaste_keys: list[str] = field(default_factory=lambda: ["cmd", "ctrl", "shift"])
     max_seconds: int = 180
     sample_rate: int = 16000
     compute_type: str = "int8"
@@ -22,6 +23,17 @@ class Config:
 def _default_path() -> Path:
     """Return config.toml in the project root (parent of this package)."""
     return Path(__file__).resolve().parent.parent / "config.toml"
+
+
+def _validate_keys(value: object, setting: str) -> list[str]:
+    """Validate a hotkey combo: a list of 1-3 non-empty strings, lower-cased."""
+    if (
+        not isinstance(value, list)
+        or not 1 <= len(value) <= 3
+        or not all(isinstance(k, str) and k for k in value)
+    ):
+        raise ValueError(f"{setting} must be a list of 1-3 non-empty strings")
+    return [k.lower() for k in value]
 
 
 def load_config(path: str | None = None) -> Config:
@@ -42,14 +54,13 @@ def load_config(path: str | None = None) -> Config:
     if not isinstance(hotkey, dict):
         raise ValueError("[hotkey] must be a TOML table")
     if "keys" in hotkey:
-        keys = hotkey["keys"]
-        if (
-            not isinstance(keys, list)
-            or not 1 <= len(keys) <= 3
-            or not all(isinstance(k, str) and k for k in keys)
-        ):
-            raise ValueError("hotkey.keys must be a list of 1-3 non-empty strings")
-        cfg.keys = [k.lower() for k in keys]
+        cfg.keys = _validate_keys(hotkey["keys"], "hotkey.keys")
+
+    repaste = data.get("repaste", {})
+    if not isinstance(repaste, dict):
+        raise ValueError("[repaste] must be a TOML table")
+    if "keys" in repaste:
+        cfg.repaste_keys = _validate_keys(repaste["keys"], "repaste.keys")
 
     whisper = data.get("whisper", {})
     if not isinstance(whisper, dict):

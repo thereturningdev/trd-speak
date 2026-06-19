@@ -9,11 +9,141 @@ permission is needed.
 import flow.hotkey as hk
 from flow.hotkey import HotkeyListener
 
+# Virtual keycodes used by the driver below.
+_CTRL = 59  # left control
+_SHIFT = 56  # left shift
+_FOUR = 21  # the "4" key (a screenshot shortcut's action key)
+
+_CTRL_MASK = hk.Quartz.kCGEventFlagMaskControl
+_SHIFT_MASK = hk.Quartz.kCGEventFlagMaskShift
+
 
 def _listener():
     return HotkeyListener(
         keys=["ctrl", "shift"], on_activate=lambda: None, on_deactivate=lambda: None
     )
+
+
+class _Driver:
+    """Feeds synthesized key/modifier events into a listener's tap callback.
+
+    Modifiers reach the real tap as flagsChanged events carrying the changed
+    keycode and the cumulative modifier flags; ordinary keys reach it as
+    keyDown/keyUp. This mirrors that so tests exercise the real callback path.
+    """
+
+    def __init__(self, listener, monkeypatch):
+        self._listener = listener
+        self._keycode = 0
+        self._flags = 0
+        monkeypatch.setattr(
+            hk.Quartz, "CGEventGetIntegerValueField", lambda e, f: self._keycode
+        )
+        monkeypatch.setattr(hk.Quartz, "CGEventGetFlags", lambda e: self._flags)
+
+    def modifier(self, keycode, flags):
+        """A modifier changed; `flags` is the cumulative mask now in effect."""
+        self._keycode = keycode
+        self._flags = flags
+        self._listener._tap_callback(
+            None, hk.Quartz.kCGEventFlagsChanged, object(), None
+        )
+
+    def key_down(self, keycode):
+        self._keycode = keycode
+        self._listener._tap_callback(None, hk.Quartz.kCGEventKeyDown, object(), None)
+
+    def key_up(self, keycode):
+        self._keycode = keycode
+        self._listener._tap_callback(None, hk.Quartz.kCGEventKeyUp, object(), None)
+
+
+def test_tap_mode_fires_on_clean_release(monkeypatch):
+    """on_trigger fires once when the combo is held then released with no
+    other key pressed in between."""
+    fired = []
+    listener = HotkeyListener(keys=["ctrl", "shift"], on_trigger=lambda: fired.append(1))
+    d = _Driver(listener, monkeypatch)
+
+    d.modifier(_CTRL, _CTRL_MASK)  # ctrl down
+    d.modifier(_SHIFT, _CTRL_MASK | _SHIFT_MASK)  # shift down -> combo held
+    assert fired == []  # nothing on press
+    d.modifier(_SHIFT, _CTRL_MASK)  # shift up -> clean release
+    d.modifier(_CTRL, 0)  # ctrl up
+
+    assert fired == [1]
+
+
+def test_tap_mode_suppressed_by_contaminating_key(monkeypatch):
+    """A non-combo key pressed during the hold (the Cmd+Ctrl+Shift+4 screenshot
+    case) cancels the trigger."""
+    fired = []
+    listener = HotkeyListener(keys=["ctrl", "shift"], on_trigger=lambda: fired.append(1))
+    d = _Driver(listener, monkeypatch)
+
+    d.modifier(_CTRL, _CTRL_MASK)
+    d.modifier(_SHIFT, _CTRL_MASK | _SHIFT_MASK)  # combo held
+    d.key_down(_FOUR)  # action key pressed -> contaminates
+    d.key_up(_FOUR)
+    d.modifier(_SHIFT, _CTRL_MASK)  # release
+    d.modifier(_CTRL, 0)
+
+    assert fired == []
+
+
+def test_tap_mode_fires_at_most_once_per_hold(monkeypatch):
+    """Releasing the second combo key after the first must not re-fire."""
+    fired = []
+    listener = HotkeyListener(keys=["ctrl", "shift"], on_trigger=lambda: fired.append(1))
+    d = _Driver(listener, monkeypatch)
+
+    d.modifier(_CTRL, _CTRL_MASK)
+    d.modifier(_SHIFT, _CTRL_MASK | _SHIFT_MASK)
+    d.modifier(_SHIFT, _CTRL_MASK)  # first release -> fires
+    d.modifier(_CTRL, 0)  # second release -> must not re-fire
+
+    assert fired == [1]
+
+
+def test_tap_after_contamination_fires_on_next_clean_hold(monkeypatch):
+    """Contamination is per-hold: a fresh clean hold afterwards still fires."""
+    fired = []
+    listener = HotkeyListener(keys=["ctrl", "shift"], on_trigger=lambda: fired.append(1))
+    d = _Driver(listener, monkeypatch)
+
+    # Contaminated hold.
+    d.modifier(_CTRL, _CTRL_MASK)
+    d.modifier(_SHIFT, _CTRL_MASK | _SHIFT_MASK)
+    d.key_down(_FOUR)
+    d.key_up(_FOUR)
+    d.modifier(_SHIFT, _CTRL_MASK)
+    d.modifier(_CTRL, 0)
+    assert fired == []
+
+    # Clean hold.
+    d.modifier(_CTRL, _CTRL_MASK)
+    d.modifier(_SHIFT, _CTRL_MASK | _SHIFT_MASK)
+    d.modifier(_SHIFT, _CTRL_MASK)
+    d.modifier(_CTRL, 0)
+    assert fired == [1]
+
+
+def test_hold_mode_still_fires_activate_and_deactivate(monkeypatch):
+    """A listener built without on_trigger keeps the original hold behavior."""
+    events = []
+    listener = HotkeyListener(
+        keys=["ctrl", "shift"],
+        on_activate=lambda: events.append("on"),
+        on_deactivate=lambda: events.append("off"),
+    )
+    d = _Driver(listener, monkeypatch)
+
+    d.modifier(_CTRL, _CTRL_MASK)
+    d.modifier(_SHIFT, _CTRL_MASK | _SHIFT_MASK)  # combo held -> activate
+    d.modifier(_SHIFT, _CTRL_MASK)  # release -> deactivate
+    d.modifier(_CTRL, 0)
+
+    assert events == ["on", "off"]
 
 
 def test_ensure_enabled_is_noop_without_a_tap():

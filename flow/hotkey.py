@@ -99,8 +99,18 @@ def _keycodes_for_token(token: str) -> tuple[int, ...]:
 class HotkeyListener:
     """Fires callbacks when a combo of keys is held and then released.
 
-    on_activate fires once when all configured keys are held simultaneously;
-    on_deactivate fires once when any of them is subsequently released.
+    Two modes, chosen by which callbacks are supplied:
+
+    - **hold** (``on_activate`` / ``on_deactivate``): on_activate fires once
+      when all configured keys are held simultaneously; on_deactivate fires
+      once when any of them is subsequently released. This drives push-to-talk.
+
+    - **tap** (``on_trigger``): on_trigger fires once when the combo is held and
+      then released *cleanly* — i.e. no other key was pressed during the hold.
+      A contaminating keypress (e.g. the ``4`` of a Cmd+Ctrl+Shift+4 screenshot)
+      cancels the trigger for that hold. Firing on release also guarantees the
+      combo modifiers are physically up, so a synthesized paste is clean.
+
     Callbacks run on the main thread (the event tap's run loop) and must
     return quickly.
 
@@ -114,14 +124,20 @@ class HotkeyListener:
     def __init__(
         self,
         keys: list[str],
-        on_activate: Callable[[], None],
-        on_deactivate: Callable[[], None],
+        on_activate: Callable[[], None] | None = None,
+        on_deactivate: Callable[[], None] | None = None,
+        on_trigger: Callable[[], None] | None = None,
     ) -> None:
         if not keys:
             raise ValueError("Hotkey keys list must not be empty")
         self._targets: frozenset[str] = frozenset(_parse_key_name(k) for k in keys)
-        self._on_activate = on_activate
-        self._on_deactivate = on_deactivate
+        self._mode = "tap" if on_trigger is not None else "hold"
+        self._on_activate = on_activate or (lambda: None)
+        self._on_deactivate = on_deactivate or (lambda: None)
+        self._on_trigger = on_trigger or (lambda: None)
+        # tap mode: set when a non-combo key is pressed during the hold; a
+        # contaminated hold does not fire on_trigger when it is released.
+        self._contaminated = False
         # keycode -> token, restricted to the configured target keys.
         self._keycode_to_token: dict[int, str] = {}
         for token in self._targets:
@@ -268,6 +284,14 @@ class HotkeyListener:
             )
             token = self._keycode_to_token.get(keycode)
             if token is None:
+                # In tap mode, any ordinary key pressed while the combo is held
+                # contaminates the hold (e.g. the "4" of Cmd+Ctrl+Shift+4), so
+                # the trigger will not fire on release. Other modifiers arrive
+                # as flagsChanged and are intentionally ignored here.
+                if self._mode == "tap" and event_type == Quartz.kCGEventKeyDown:
+                    with self._cond:
+                        if self._active:
+                            self._contaminated = True
                 return event
             if event_type == Quartz.kCGEventKeyDown:
                 self._press(token, keycode)
@@ -304,17 +328,22 @@ class HotkeyListener:
             self._press(token, keycode)
 
     def _press(self, token: str, keycode: int) -> None:
-        fire = False
+        fire_activate = False
         with self._cond:
             self._held.setdefault(token, set()).add(keycode)
             if not self._active and self._held.keys() == self._targets:
                 self._active = True
-                fire = True
-        if fire:
+                if self._mode == "tap":
+                    # A fresh full-hold starts clean; contamination is per-hold.
+                    self._contaminated = False
+                else:
+                    fire_activate = True
+        if fire_activate:
             self._on_activate()
 
     def _release(self, token: str, keycode: int) -> None:
-        fire = False
+        fire_deactivate = False
+        fire_trigger = False
         with self._cond:
             variants = self._held.get(token)
             if variants is not None:
@@ -323,8 +352,13 @@ class HotkeyListener:
                     del self._held[token]
             if self._active and token not in self._held:
                 self._active = False
-                fire = True
+                if self._mode == "tap":
+                    fire_trigger = not self._contaminated
+                else:
+                    fire_deactivate = True
             if not self._held:
                 self._cond.notify_all()
-        if fire:
+        if fire_deactivate:
             self._on_deactivate()
+        if fire_trigger:
+            self._on_trigger()
