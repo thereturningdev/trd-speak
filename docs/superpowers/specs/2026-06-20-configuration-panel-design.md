@@ -3,6 +3,10 @@
 **Date:** 2026-06-20
 **Status:** Designed (not yet implemented).
 **Issue:** #3 — "Add a configuration panel"
+**Mockup:** [`2026-06-20-configuration-panel-mockup.html`](./2026-06-20-configuration-panel-mockup.html)
+— an interactive HTML mockup of the window (open in a browser; click a field and
+press a combo to try the recorder). It is a layout/UX preview only; the shipped
+window uses native AppKit controls.
 
 ## Problem
 

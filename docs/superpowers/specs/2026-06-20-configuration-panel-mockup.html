@@ -1,0 +1,457 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>LocalFlow — Configuration (mockup)</title>
+<style>
+  :root {
+    --accent: #007aff;
+    --accent-press: #0066d6;
+    --text: #1d1d1f;
+    --muted: #86868b;
+    --field-bg: #ffffff;
+    --field-border: #d2d2d7;
+    --window-bg: #ececec;
+    --content-bg: #f6f6f6;
+    --danger: #d70015;
+    --warn: #b25000;
+  }
+  * { box-sizing: border-box; }
+  html, body {
+    height: 100%;
+    margin: 0;
+    font-family: -apple-system, BlinkMacSystemFont, "SF Pro Text", "Helvetica Neue", Arial, sans-serif;
+    color: var(--text);
+    -webkit-font-smoothing: antialiased;
+  }
+  body {
+    background:
+      radial-gradient(1200px 800px at 20% -10%, #6fb1ff 0%, transparent 55%),
+      radial-gradient(1000px 700px at 110% 20%, #b58bff 0%, transparent 50%),
+      linear-gradient(160deg, #2a5db0 0%, #6a3fb0 100%);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 40px 16px;
+  }
+
+  /* ---- macOS window chrome ---- */
+  .window {
+    width: 520px;
+    background: var(--content-bg);
+    border-radius: 11px;
+    box-shadow: 0 30px 70px rgba(0,0,0,.45), 0 0 0 .5px rgba(0,0,0,.25);
+    overflow: hidden;
+  }
+  .titlebar {
+    height: 44px;
+    background: linear-gradient(#f6f6f6, #e7e7e7);
+    border-bottom: .5px solid #d0d0d0;
+    display: flex;
+    align-items: center;
+    padding: 0 14px;
+    position: relative;
+    user-select: none;
+  }
+  .lights { display: flex; gap: 8px; }
+  .light { width: 12px; height: 12px; border-radius: 50%; }
+  .light.red { background: #ff5f57; box-shadow: inset 0 0 0 .5px rgba(0,0,0,.2); }
+  .light.amber { background: #febc2e; box-shadow: inset 0 0 0 .5px rgba(0,0,0,.2); }
+  .light.green { background: #28c840; box-shadow: inset 0 0 0 .5px rgba(0,0,0,.2); }
+  .titlebar .title {
+    position: absolute; left: 0; right: 0; text-align: center;
+    font-size: 13px; font-weight: 600; color: #3a3a3c; pointer-events: none;
+  }
+
+  .content { padding: 24px 26px 14px; }
+  .intro {
+    font-size: 12px; color: var(--muted); margin: 0 0 20px;
+    line-height: 1.45;
+  }
+
+  .row {
+    display: grid;
+    grid-template-columns: 190px 1fr;
+    align-items: center;
+    column-gap: 16px;
+    margin-bottom: 6px;
+  }
+  .row > label {
+    text-align: right;
+    font-size: 13px;
+    color: var(--text);
+  }
+  .hint {
+    grid-column: 2;
+    font-size: 11px;
+    color: var(--muted);
+    margin: 3px 0 16px;
+    min-height: 13px;
+  }
+
+  /* ---- recorder field ---- */
+  .recorder {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    min-height: 30px;
+    padding: 4px 10px;
+    background: var(--field-bg);
+    border: 1px solid var(--field-border);
+    border-radius: 7px;
+    cursor: pointer;
+    font-size: 13px;
+    transition: box-shadow .12s, border-color .12s;
+    min-width: 0;
+  }
+  .recorder:hover { border-color: #b9b9bf; }
+  .recorder.recording {
+    border-color: var(--accent);
+    box-shadow: 0 0 0 3px rgba(0,122,255,.25);
+    cursor: default;
+  }
+  .recorder.invalid { border-color: var(--danger); }
+  .recorder .placeholder { color: var(--muted); }
+  .recorder .combo { display: flex; gap: 5px; align-items: center; flex-wrap: wrap; }
+  .recorder .spacer { flex: 1; }
+  .recorder .edit {
+    font-size: 11px; color: var(--muted); opacity: 0; transition: opacity .12s;
+  }
+  .recorder:hover .edit { opacity: 1; }
+
+  kbd {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    min-width: 24px;
+    height: 24px;
+    padding: 0 7px;
+    font-family: inherit;
+    font-size: 13px;
+    font-weight: 500;
+    color: #1d1d1f;
+    background: linear-gradient(#ffffff, #f0f0f2);
+    border: 1px solid #c6c6cc;
+    border-bottom-width: 2px;
+    border-radius: 6px;
+    box-shadow: 0 1px 0 rgba(255,255,255,.6) inset;
+  }
+
+  /* ---- status + footer ---- */
+  .status {
+    min-height: 18px;
+    font-size: 12px;
+    margin: 6px 2px 0;
+    color: var(--muted);
+  }
+  .status.error { color: var(--danger); }
+  .status.warn { color: var(--warn); }
+  .status.ok { color: #1c7d2e; }
+
+  .footer {
+    display: flex;
+    justify-content: flex-end;
+    gap: 10px;
+    padding: 16px 26px 22px;
+    background: var(--content-bg);
+  }
+  button {
+    font-family: inherit;
+    font-size: 13px;
+    padding: 6px 18px;
+    border-radius: 7px;
+    border: 1px solid #c4c4ca;
+    background: linear-gradient(#ffffff, #f1f1f3);
+    color: var(--text);
+    cursor: pointer;
+  }
+  button:hover { background: linear-gradient(#fbfbfb, #ececef); }
+  button.primary {
+    background: var(--accent);
+    border-color: var(--accent);
+    color: #fff;
+    font-weight: 500;
+  }
+  button.primary:hover { background: var(--accent-press); }
+  button.primary:disabled {
+    background: #b7d4ff; border-color: #b7d4ff; cursor: not-allowed;
+  }
+
+  /* ---- menu context inset ---- */
+  .context {
+    margin-top: 26px;
+    color: #fff;
+    text-align: center;
+    font-size: 12px;
+    opacity: .92;
+  }
+  .menu {
+    display: inline-block;
+    margin-top: 10px;
+    background: rgba(245,245,247,.98);
+    backdrop-filter: blur(20px);
+    border-radius: 8px;
+    box-shadow: 0 12px 30px rgba(0,0,0,.35), 0 0 0 .5px rgba(0,0,0,.2);
+    padding: 5px;
+    text-align: left;
+    width: 230px;
+  }
+  .menu .mi {
+    font-size: 12.5px; color: #1d1d1f;
+    padding: 5px 10px; border-radius: 5px; display: flex; justify-content: space-between;
+  }
+  .menu .mi.sep { padding: 0; margin: 5px 8px; border-top: .5px solid #d4d4d8; }
+  .menu .mi .chev { color: var(--muted); }
+  .menu .mi.hl { background: var(--accent); color: #fff; }
+  .menu .mi.dim { color: var(--muted); }
+</style>
+</head>
+<body>
+<div>
+  <!-- ================= Configuration window ================= -->
+  <div class="window" role="dialog" aria-label="LocalFlow Configuration">
+    <div class="titlebar">
+      <div class="lights">
+        <span class="light red"></span>
+        <span class="light amber"></span>
+        <span class="light green"></span>
+      </div>
+      <div class="title">LocalFlow Settings</div>
+    </div>
+
+    <div class="content">
+      <p class="intro">
+        Set the global shortcuts. Click a field and <strong>press the keys</strong> you
+        want — modifier-only combos (e.g.&nbsp;⌃⇧) and modifier+key combos
+        (e.g.&nbsp;⌘⌃V) both work. Press <strong>Esc</strong> to cancel a recording.
+      </p>
+
+      <div class="row">
+        <label for="rec-dictate">Dictate shortcut</label>
+        <div class="recorder" id="rec-dictate" tabindex="0" data-min="2">
+          <span class="combo"></span>
+          <span class="spacer"></span>
+          <span class="edit">click to record</span>
+        </div>
+      </div>
+      <div class="hint" id="hint-dictate">Hold to talk; release to transcribe.</div>
+
+      <div class="row">
+        <label for="rec-repaste">Paste last dictation shortcut</label>
+        <div class="recorder" id="rec-repaste" tabindex="0" data-min="2">
+          <span class="combo"></span>
+          <span class="spacer"></span>
+          <span class="edit">click to record</span>
+        </div>
+      </div>
+      <div class="hint" id="hint-repaste">Tap to re-insert the most recent dictation.</div>
+
+      <div class="status" id="status"></div>
+    </div>
+
+    <div class="footer">
+      <button id="cancel">Cancel</button>
+      <button id="save" class="primary">Save</button>
+    </div>
+  </div>
+
+  <!-- ================= Menu placement context ================= -->
+  <div class="context">
+    …launched from the menu bar, just under “Recent Dictations”:
+    <div class="menu">
+      <div class="mi">Recent Dictations <span class="chev">›</span></div>
+      <div class="mi hl">Configuration…</div>
+      <div class="mi">Transcription Engine <span class="chev">›</span></div>
+      <div class="mi sep"></div>
+      <div class="mi dim">Open Log</div>
+      <div class="mi dim">Quit LocalFlow</div>
+    </div>
+  </div>
+</div>
+
+<script>
+// ---- token -> display glyph ----
+const MOD_GLYPH = { ctrl: "⌃", alt: "⌥", shift: "⇧", cmd: "⌘" };
+const MOD_ORDER = ["ctrl", "alt", "shift", "cmd"]; // macOS display order
+const KEY_LABEL = {
+  space: "Space", enter: "↩", tab: "⇥", left: "←", right: "→",
+  up: "↑", down: "↓", esc: "Esc"
+};
+
+// ---- map a JS KeyboardEvent.code to our token (mirrors hotkey.py vocabulary) ----
+function codeToToken(code) {
+  if (/^Key[A-Z]$/.test(code)) return code.slice(3).toLowerCase();
+  if (/^Digit[0-9]$/.test(code)) return code.slice(5);
+  if (/^F([1-9]|1[0-9]|20)$/.test(code)) return code.toLowerCase();
+  const named = {
+    Space: "space", Enter: "enter", Tab: "tab",
+    ArrowLeft: "left", ArrowRight: "right", ArrowUp: "up", ArrowDown: "down"
+  };
+  return named[code] || null;
+}
+function modsFromEvent(e) {
+  const m = [];
+  if (e.ctrlKey) m.push("ctrl");
+  if (e.altKey) m.push("alt");
+  if (e.shiftKey) m.push("shift");
+  if (e.metaKey) m.push("cmd");
+  return m;
+}
+function orderCombo(tokens) {
+  const mods = MOD_ORDER.filter(m => tokens.includes(m));
+  const keys = tokens.filter(t => !MOD_ORDER.includes(t));
+  return [...mods, ...keys];
+}
+function glyphFor(tok) {
+  if (MOD_GLYPH[tok]) return MOD_GLYPH[tok];
+  if (KEY_LABEL[tok]) return KEY_LABEL[tok];
+  return tok.toUpperCase();
+}
+
+// ---- state ----
+const combos = {
+  "rec-dictate": ["ctrl", "shift"],
+  "rec-repaste": ["cmd", "ctrl"]
+};
+let recording = null;     // element id being recorded
+let peakMods = [];        // largest modifier set seen during this recording
+
+function renderCombo(id) {
+  const el = document.getElementById(id);
+  const box = el.querySelector(".combo");
+  box.innerHTML = "";
+  const tokens = combos[id];
+  if (recording === id) {
+    const live = peakMods.length ? orderCombo(peakMods) : [];
+    if (live.length) {
+      live.forEach(t => { const k = document.createElement("kbd"); k.textContent = glyphFor(t); box.appendChild(k); });
+    } else {
+      const ph = document.createElement("span");
+      ph.className = "placeholder";
+      ph.textContent = "Press shortcut… (Esc to cancel)";
+      box.appendChild(ph);
+    }
+    return;
+  }
+  if (!tokens || !tokens.length) {
+    const ph = document.createElement("span");
+    ph.className = "placeholder"; ph.textContent = "Not set";
+    box.appendChild(ph);
+    return;
+  }
+  orderCombo(tokens).forEach(t => {
+    const k = document.createElement("kbd"); k.textContent = glyphFor(t); box.appendChild(k);
+  });
+}
+
+// ---- validation (mirrors validate_combo + conflict policy in the spec) ----
+function comboError(tokens) {
+  const mods = tokens.filter(t => MOD_ORDER.includes(t));
+  if (tokens.length < 2) return "needs at least 2 keys";
+  if (tokens.length > 3) return "at most 3 keys";
+  if (mods.length === 0) return "needs at least one modifier";
+  return null;
+}
+function sameSet(a, b) {
+  return a.length === b.length && a.every(x => b.includes(x));
+}
+function isSubset(a, b) { return a.every(x => b.includes(x)); }
+
+function validateAll() {
+  const status = document.getElementById("status");
+  const save = document.getElementById("save");
+  const d = combos["rec-dictate"], r = combos["rec-repaste"];
+  document.getElementById("rec-dictate").classList.toggle("invalid", !!comboError(d));
+  document.getElementById("rec-repaste").classList.toggle("invalid", !!comboError(r));
+
+  const de = comboError(d), re = comboError(r);
+  if (de) { status.className = "status error"; status.textContent = `Dictate shortcut ${de}.`; save.disabled = true; return; }
+  if (re) { status.className = "status error"; status.textContent = `Paste shortcut ${re}.`; save.disabled = true; return; }
+  if (sameSet(d, r)) {
+    status.className = "status error";
+    status.textContent = "The two shortcuts must be different.";
+    save.disabled = true; return;
+  }
+  if (isSubset(d, r) || isSubset(r, d)) {
+    status.className = "status warn";
+    status.textContent = "Heads up: these shortcuts overlap — allowed, but they may interfere.";
+    save.disabled = false; return;
+  }
+  status.className = "status ok";
+  status.textContent = "Looks good.";
+  save.disabled = false;
+}
+
+// ---- recording ----
+function startRecording(id) {
+  if (recording) stopRecording(false);
+  recording = id;
+  peakMods = [];
+  const el = document.getElementById(id);
+  el.classList.add("recording");
+  renderCombo(id);
+}
+function stopRecording(commit) {
+  if (!recording) return;
+  const el = document.getElementById(recording);
+  el.classList.remove("recording");
+  const id = recording;
+  recording = null;
+  renderCombo(id);
+  if (commit) validateAll();
+}
+
+document.querySelectorAll(".recorder").forEach(el => {
+  el.addEventListener("click", () => startRecording(el.id));
+});
+
+document.addEventListener("keydown", (e) => {
+  if (!recording) return;
+  e.preventDefault();
+  if (e.key === "Escape") { stopRecording(false); return; }
+
+  const mods = modsFromEvent(e);
+  if (mods.length > peakMods.length) peakMods = mods;
+
+  const isModifierKey = ["Meta", "Control", "Alt", "Shift"].includes(e.key);
+  if (isModifierKey) {
+    renderCombo(recording); // live preview of held modifiers
+    return;
+  }
+  // a real key ends the combo: modifiers + this key
+  const tok = codeToToken(e.code);
+  if (!tok) { renderCombo(recording); return; }
+  combos[recording] = orderCombo([...mods, tok]);
+  stopRecording(true);
+}, true);
+
+document.addEventListener("keyup", (e) => {
+  if (!recording) return;
+  e.preventDefault();
+  // modifier-only combo: finalize when a modifier is released after a hold
+  const mods = modsFromEvent(e);
+  if (mods.length < peakMods.length && peakMods.length >= 1) {
+    combos[recording] = orderCombo(peakMods);
+    stopRecording(true);
+  }
+}, true);
+
+document.getElementById("cancel").addEventListener("click", () => {
+  combos["rec-dictate"] = ["ctrl", "shift"];
+  combos["rec-repaste"] = ["cmd", "ctrl"];
+  renderCombo("rec-dictate"); renderCombo("rec-repaste");
+  validateAll();
+});
+document.getElementById("save").addEventListener("click", () => {
+  const fmt = id => orderCombo(combos[id]).map(glyphFor).join(" ");
+  alert(`(Mockup) Saved — applied immediately:\n\nDictate:  ${fmt("rec-dictate")}\nPaste:    ${fmt("rec-repaste")}`);
+});
+
+// ---- init ----
+renderCombo("rec-dictate");
+renderCombo("rec-repaste");
+validateAll();
+</script>
+</body>
+</html>
