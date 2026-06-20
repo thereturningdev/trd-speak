@@ -41,19 +41,34 @@ def _notify(message: str) -> None:
 
 
 def _selftest() -> int:
-    """Import every heavy/native dependency to prove a frozen bundle is
-    self-contained. Returns 0 on success. Used by the release build's smoke
-    test (`LocalFlow --selftest`), not by normal startup."""
+    """Import every heavy/native dependency, then exercise PortAudio at runtime,
+    to prove a frozen bundle is self-contained. Returns 0 on success. Used by the
+    release build's smoke test (`LocalFlow --selftest`), not by normal startup."""
     import av  # noqa: F401
     import ctranslate2  # noqa: F401
     import faster_whisper  # noqa: F401
     import numpy  # noqa: F401
     import onnxruntime  # noqa: F401
-    import sounddevice  # noqa: F401
+    import sounddevice as sd
     import tokenizers  # noqa: F401
     from flow import app, engines, menubar  # noqa: F401
 
-    print("selftest OK")
+    # Exercise PortAudio at runtime, not just at import: query_devices() runs
+    # Pa_Initialize + device enumeration, and check_input_settings() negotiates
+    # the Recorder's format (16 kHz mono float32) with CoreAudio. Together they
+    # prove the bundled libportaudio actually works, not merely that it loaded.
+    # Opening a stream / reading frames needs Microphone (TCC) permission and is
+    # covered by clean-machine QA, so it is intentionally not done here.
+    pa_version = sd.get_portaudio_version()[1]
+    devices = sd.query_devices()
+    try:
+        default_input = sd.query_devices(kind="input")["name"]
+        sd.check_input_settings(samplerate=16000, channels=1, dtype="float32")
+        audio = f"input='{default_input}' OK"
+    except Exception as exc:  # no input device on this machine, etc.
+        audio = f"no usable input device ({exc})"
+
+    print(f"selftest OK ({pa_version}; {len(devices)} devices; {audio})")
     return 0
 
 
