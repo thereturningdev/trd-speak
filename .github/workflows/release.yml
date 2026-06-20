@@ -1,0 +1,120 @@
+name: Release
+
+# Builds, signs, notarizes and staples TRDSpeak.app via make_release.sh on a
+# macOS runner, then publishes a GitHub Release with the notarized DMG attached.
+#
+# Triggers:
+#   - push of a tag matching v*           -> releases that tag automatically
+#   - manual run (workflow_dispatch)      -> releases an EXISTING tag you name
+#     (use this for v0.1.0, whose tag was pushed before this workflow existed)
+#
+# Required repository secrets (Settings -> Secrets and variables -> Actions),
+# see .github/RELEASING-CI.md for how to produce each:
+#   MACOS_CERT_P12_BASE64  - Developer ID Application cert + key, .p12, base64
+#   MACOS_CERT_PASSWORD    - the .p12 export password
+#   NOTARY_APPLE_ID        - Apple ID email used for notarization
+#   NOTARY_PASSWORD        - app-specific password for that Apple ID
+#   NOTARY_TEAM_ID         - Apple Developer Team ID (2FV8WB29XC)
+
+on:
+  push:
+    tags:
+      - 'v*'
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: 'Existing tag to build & release (e.g. v0.1.0)'
+        required: true
+
+permissions:
+  contents: write   # needed to create the GitHub Release
+
+jobs:
+  release:
+    runs-on: macos-15
+    timeout-minutes: 90
+    env:
+      # Read by sign_app.sh / make_dmg.sh. The identity NAME is public, not a
+      # secret — the private key lives in the imported keychain.
+      CODESIGN_IDENTITY: "Developer ID Application: Filippo Diotalevi (2FV8WB29XC)"
+      NOTARY_PROFILE: trd-notary
+
+    steps:
+      - name: Resolve tag
+        id: tag
+        run: |
+          TAG="${{ github.event.inputs.tag }}"
+          [ -z "$TAG" ] && TAG="${GITHUB_REF_NAME}"
+          echo "tag=$TAG" >> "$GITHUB_OUTPUT"
+          echo "Releasing tag: $TAG"
+
+      - name: Checkout the tagged commit
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ steps.tag.outputs.tag }}
+          fetch-depth: 0
+
+      - name: Set up Python 3.12
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Create venv and install dependencies
+        run: |
+          python3 -m venv .venv
+          .venv/bin/python -m pip install --upgrade pip
+          .venv/bin/python -m pip install -r requirements.txt -r requirements-build.txt
+
+      - name: Import Developer ID signing certificate
+        env:
+          CERT_P12_BASE64: ${{ secrets.MACOS_CERT_P12_BASE64 }}
+          CERT_PASSWORD: ${{ secrets.MACOS_CERT_PASSWORD }}
+        run: |
+          KEYCHAIN="$RUNNER_TEMP/build.keychain-db"
+          KCPASS="$(openssl rand -base64 24)"
+          security create-keychain -p "$KCPASS" "$KEYCHAIN"
+          security set-keychain-settings -lut 21600 "$KEYCHAIN"
+          security unlock-keychain -p "$KCPASS" "$KEYCHAIN"
+          # Make it the default keychain so notarytool --keychain-profile finds
+          # its credential, and prepend it to the search list so codesign /
+          # find-identity see the imported Developer ID identity.
+          security default-keychain -s "$KEYCHAIN"
+          security list-keychains -d user -s "$KEYCHAIN" $(security list-keychains -d user | sed 's/"//g')
+          printf '%s' "$CERT_P12_BASE64" | base64 --decode > "$RUNNER_TEMP/cert.p12"
+          security import "$RUNNER_TEMP/cert.p12" -k "$KEYCHAIN" -P "$CERT_PASSWORD" \
+            -T /usr/bin/codesign -T /usr/bin/security
+          security set-key-partition-list -S apple-tool:,apple:,codesign: -s -k "$KCPASS" "$KEYCHAIN" >/dev/null
+          rm -f "$RUNNER_TEMP/cert.p12"
+          echo "Signing identities available:"
+          security find-identity -v -p codesigning "$KEYCHAIN"
+
+      - name: Store notarytool credentials
+        env:
+          NOTARY_APPLE_ID: ${{ secrets.NOTARY_APPLE_ID }}
+          NOTARY_PASSWORD: ${{ secrets.NOTARY_PASSWORD }}
+          NOTARY_TEAM_ID: ${{ secrets.NOTARY_TEAM_ID }}
+        run: |
+          xcrun notarytool store-credentials "$NOTARY_PROFILE" \
+            --apple-id "$NOTARY_APPLE_ID" \
+            --password "$NOTARY_PASSWORD" \
+            --team-id "$NOTARY_TEAM_ID" \
+            --keychain "$RUNNER_TEMP/build.keychain-db"
+
+      - name: Build, sign, notarize, staple and package the DMG
+        run: ./make_release.sh
+
+      - name: Publish the GitHub Release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ steps.tag.outputs.tag }}
+        run: |
+          NOTES="$RUNNER_TEMP/notes.md"
+          cp .github/release-body.md "$NOTES"
+          printf '\n' >> "$NOTES"
+          # Append the auto-generated "What's Changed" section (best-effort).
+          gh api "repos/${GITHUB_REPOSITORY}/releases/generate-notes" \
+            -f tag_name="$TAG" --jq .body >> "$NOTES" || true
+          gh release create "$TAG" dist/TRDSpeak.dmg \
+            --title "TRD Speak ${TAG}" \
+            --notes-file "$NOTES" \
+            --verify-tag
