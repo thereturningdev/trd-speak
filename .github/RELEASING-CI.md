@@ -1,20 +1,26 @@
 # CI release (GitHub Actions)
 
 `.github/workflows/release.yml` builds, signs, notarizes and staples the app
-with `make_release.sh` on a `macos-15` runner, then publishes a GitHub Release
-with the notarized `TRDSpeak.dmg` attached.
+with `make_release.sh` on a `macos-14` runner, then attaches the notarized
+`TRDSpeak.dmg` to a **draft** GitHub Release. Same flow as the TRD Workbench
+project.
 
 This mirrors the local release (see `RELEASING.md`); the only difference is that
 the Developer ID signing key and the notary credentials come from **repository
 secrets** instead of your login keychain.
 
-## Triggers
+## How to release
 
-- **Push a `v*` tag** (e.g. `git push origin v0.2.0`) → that tag is released
-  automatically.
-- **Manual run** (Actions tab → *Release* → *Run workflow*) → releases an
-  **existing** tag you type in. Use this for `v0.1.0`, whose tag was pushed
-  before this workflow existed.
+1. **Actions** tab → **Release** → **Run workflow**.
+2. Enter the version, e.g. `0.1.1` (no leading `v`), and run.
+3. The run builds + signs + notarizes, then creates a **draft** release
+   `v<version>` with `TRDSpeak.dmg` attached. `gh` creates the tag from the
+   version — you do **not** tag anything by hand, and there is no tag trigger.
+4. Open the draft release, download the DMG, test it on a clean Mac.
+5. Click **Publish release** to go public.
+
+There is intentionally **no tag-push trigger** — releases only ever start from a
+manual run with an explicit version, which avoids duplicate/racing runs.
 
 ## One-time setup: repository secrets
 
@@ -51,12 +57,15 @@ uses this API key, not an app-specific password.
 
 ## Notes
 
+- The dispatched version is passed to the build (`TRDSPEAK_VERSION`), which
+  stamps it into `flow/__init__.py` and the app's `Info.plist` — the tag is the
+  single source of truth for the version.
 - The runner imports the cert into a temporary keychain, sets it as default so
   `notarytool --keychain-profile trd-notary` finds the stored credential, then
   runs `make_release.sh` unchanged.
 - The Whisper model is fetched during the build (`make_release.sh` calls
   `scripts/fetch_model.py`), so no model needs to be committed.
-- A run takes ~20–40 min (dependency install + PyInstaller + two notarization
-  round-trips).
+- A run takes roughly 5–10 min (the bundle is large: bundled CPython + ML stack
+  + the ~140 MB model, notarized twice).
 - The signing identity **name** is set in the workflow env (`CODESIGN_IDENTITY`)
   and is not secret; only the private key (in the `.p12`) is.

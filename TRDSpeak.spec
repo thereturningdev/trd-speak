@@ -7,6 +7,10 @@ import os
 
 from PyInstaller.utils.hooks import collect_all, collect_submodules
 
+# The release workflow passes the dispatched version in TRDSPEAK_VERSION so the
+# tag is the single source of truth; local builds fall back to the literal.
+_VERSION = os.environ.get("TRDSPEAK_VERSION") or "0.1.0"
+
 datas, binaries, hiddenimports = [], [], []
 
 # Embedded default model (base.en) so the app transcribes offline, no download.
@@ -104,12 +108,12 @@ app = BUNDLE(
     name="TRDSpeak.app",
     icon="assets/AppIcon.icns",
     bundle_identifier="com.thereturningdev.speak",
-    version="0.1.0",
+    version=_VERSION,
     info_plist={
         "CFBundleName": "TRD Speak",
         "CFBundleDisplayName": "TRD Speak",
-        "CFBundleShortVersionString": "0.1.0",  # marketing version
-        "CFBundleVersion": "1",                 # build number — bump every build, must increase
+        "CFBundleShortVersionString": _VERSION,  # marketing version (from the release tag)
+        "CFBundleVersion": _VERSION,             # build number (Developer ID: need not increase)
         "LSMinimumSystemVersion": "12.0",
         "LSApplicationCategoryType": "public.app-category.productivity",
         # Dock app, NOT a menu-bar agent: run() sets NSApplicationActivationPolicyRegular
