@@ -1,19 +1,19 @@
 #!/bin/bash
 # Build TRDSpeak.app — a minimal app bundle so macOS permissions (Microphone,
-# Input Monitoring, Accessibility) attach to "TRD Speak" instead of your
+# Input Monitoring, Accessibility) attach to "TRD Speak Dev" instead of your
 # terminal app. Requires the Xcode Command Line Tools (xcode-select --install).
 #
 # The bundle's executable is a small compiled launcher that runs the Python
 # process as a CHILD and waits. It must NOT exec/replace itself with Python:
 # macOS attributes permissions to the code identity of the running executable,
 # so an exec'd interpreter makes the prompts name "Python 3.12" instead of
-# TRD Speak. A live parent passes its app identity down to its children.
+# TRD Speak Dev. A live parent passes its app identity down to its children.
 #
 # The child it spawns is a COPY of the real CPython Mach-O placed inside
 # Contents/MacOS (TRDSpeak-python). LaunchServices names a checked-in app
 # after the bundle enclosing its executable, so spawning .venv/bin/python
 # directly would register the GUI process as "Python" (org.python.python) —
-# wrong Dock label, and `lsappinfo info "TRD Speak"` would find nothing. The
+# wrong Dock label, and `lsappinfo info "TRD Speak Dev"` would find nothing. The
 # interpreter links libpython by absolute path, so the copy still runs; the
 # launcher sets PYTHONEXECUTABLE=.venv/bin/python so it adopts the venv
 # (pyvenv.cfg, site-packages, sys.executable) exactly as before.
@@ -48,8 +48,8 @@ cat > "$APP/Contents/Info.plist" <<EOF
 <plist version="1.0">
 <dict>
     <key>CFBundlePackageType</key>      <string>APPL</string>
-    <key>CFBundleIdentifier</key>       <string>com.thereturningdev.speak</string>
-    <key>CFBundleName</key>             <string>TRD Speak</string>
+    <key>CFBundleIdentifier</key>       <string>com.thereturningdev.speak.dev</string>
+    <key>CFBundleName</key>             <string>TRD Speak Dev</string>
     <key>CFBundleExecutable</key>       <string>TRDSpeak</string>
     <key>CFBundleShortVersionString</key> <string>0.1.0</string>
     <key>CFBundleIconFile</key>         <string>AppIcon</string>
