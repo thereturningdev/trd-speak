@@ -211,13 +211,18 @@ class _Delegate(NSObject):
         """
         key = str(sender.representedObject())
         if key == "mic":
+            # The Microphone prompt is unlike Accessibility/Input Monitoring: its
+            # Allow/Deny dialog has NO "Open System Settings" button, and the
+            # Microphone pane has no "+" to add an app manually — so a missed or
+            # dismissed prompt strands the user. ALWAYS take them to the pane.
+            # request_mic() fires the native prompt only when undetermined, but
+            # also registers the app in the Microphone list, so once it has run
+            # there is a TRD Speak toggle to flip even if the prompt was missed.
             if permissions.mic_status() == "undetermined":
                 print("Triggering the macOS Microphone prompt…")
-                permissions.request_mic()  # native Allow/Deny; applies live
-            else:
-                # Denied (or unknown): only the Settings pane can fix it.
-                print("Opening System Settings -> Microphone…")
-                _open_pane("Privacy_Microphone")
+                permissions.request_mic()  # native Allow/Deny + registers the app
+            print("Opening System Settings -> Microphone…")
+            _open_pane("Privacy_Microphone")
             return
         perm = next(p for p in permissions.PERMISSIONS if p.key == key)
         requested = getattr(self, "_requested", None)
