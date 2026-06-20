@@ -41,3 +41,20 @@ Release process for the **0.1** milestone. Tracked in issues #5–#17.
 9. Version 0.1.0, notes, tag — #15
 10. Clean-machine QA — #16
 11. Publish GitHub Release — #17
+
+## Code-signing (#11)
+
+`./sign_app.sh [path]` signs the bundle **inside-out** with the Developer ID
+Application cert, Hardened Runtime (`--options runtime`), and a secure timestamp:
+every nested `.so`/`.dylib` and the embedded `Python.framework` first, then
+`LocalFlow.app` last. No `--deep` — nested code is signed explicitly. The final
+sign attaches `entitlements.plist` (codesign puts it on the main executable).
+
+- Identity: `$CODESIGN_IDENTITY` (defaults to the Developer ID above).
+- `entitlements.plist` grants three Hardened Runtime relaxations the embedded
+  CPython needs for its dlopen'd native deps (ctranslate2, onnxruntime, ffmpeg,
+  PortAudio): `allow-unsigned-executable-memory`, `allow-jit`,
+  `disable-library-validation`.
+- **Keep `entitlements.plist` comment-free** — codesign's AMFI plist parser
+  rejects XML comments (`AMFIUnserializeXML: syntax error`).
+- Verify: `codesign --verify --deep --strict --verbose=2 LocalFlow.app`.
