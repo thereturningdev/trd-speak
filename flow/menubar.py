@@ -42,7 +42,7 @@ import AppKit
 import Foundation
 from Foundation import NSObject
 
-from flow import engine_state, hotkey_state, paster, permissions
+from flow import __version__, engine_state, hotkey_state, paster, permissions
 from flow.app import App
 from flow.config import Config
 from flow.engines import ENGINE_NAMES, ENGINES
@@ -73,6 +73,20 @@ def _notify(message: str) -> None:
         "osascript", "-e",
         f'display notification "{escaped}" with title "TRD Speak"',
     ])
+
+
+def _is_dev_build() -> bool:
+    """Dev bundles (make_app.sh) carry a .dev bundle id; the notarized
+    distribution build (TRDSpeak.spec) is com.thereturningdev.speak. A
+    non-bundled ./run.sh launch has no .dev id and reads as a distribution
+    build — an accepted limitation."""
+    bid = AppKit.NSBundle.mainBundle().bundleIdentifier()
+    return bool(bid) and str(bid).endswith(".dev")
+
+
+def _about_text(version: str, is_dev: bool) -> str:
+    """Menu/notification label, e.g. 'TRD Speak 0.1.2 (dev)'."""
+    return f"TRD Speak {version}" + (" (dev)" if is_dev else "")
 
 
 def _open_pane(anchor: str) -> None:
@@ -222,6 +236,11 @@ class _Delegate(NSObject):
 
     def openLog_(self, _sender) -> None:
         subprocess.Popen(["open", LOG_PATH])
+
+    def aboutApp_(self, _sender) -> None:
+        """"About TRD Speak…" row clicked: show the running version (and dev
+        flavor) as a notification — never a modal (see module docstring)."""
+        _notify(_about_text(__version__, _is_dev_build()))
 
     def grantPerm_(self, sender) -> None:
         """Current-step row clicked: fire ONLY that permission's prompt.
@@ -462,6 +481,12 @@ class MenuBar:
         menu.addItem_(self._engine_root)
         self._engine_separator = AppKit.NSMenuItem.separatorItem()
         menu.addItem_(self._engine_separator)
+
+        about_item = AppKit.NSMenuItem.alloc().initWithTitle_action_keyEquivalent_(
+            "About TRD Speak…", "aboutApp:", ""
+        )
+        about_item.setTarget_(delegate)
+        menu.addItem_(about_item)
 
         log_item = AppKit.NSMenuItem.alloc().initWithTitle_action_keyEquivalent_(
             "Open Log", "openLog:", ""
