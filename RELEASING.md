@@ -70,3 +70,15 @@ bundle (it checks first).
 - On a non-`Accepted` verdict it prints `xcrun notarytool log <id>` and exits 1.
 - Verify: `xcrun stapler validate LocalFlow.app` and
   `spctl -a -vvv -t exec LocalFlow.app` → `Notarized Developer ID`.
+
+## Distributable DMG (#13)
+
+`./make_dmg.sh [path]` packages the notarized + stapled app into
+`dist/LocalFlow.dmg`: it stages the app plus an `/Applications` drop-target
+symlink, builds a compressed UDZO DMG (`hdiutil`), signs the DMG with the
+Developer ID cert, notarizes the DMG directly (no zip), and staples it.
+
+- Requires the payload app to already be stapled (it checks).
+- Verify: `xcrun stapler validate LocalFlow.dmg` and
+  `spctl -a -t open --context context:primary-signature LocalFlow.dmg` →
+  `Notarized Developer ID`.
