@@ -239,7 +239,7 @@ class HotkeyListener:
         )
         if tap is None:
             raise RuntimeError(
-                "Could not create the keyboard event tap. Grant LocalFlow "
+                "Could not create the keyboard event tap. Grant TRD Speak "
                 "Input Monitoring permission in System Settings > Privacy & "
                 "Security > Input Monitoring, then restart the app."
             )

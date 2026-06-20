@@ -1,25 +1,25 @@
 #!/bin/bash
-# Developer ID code-sign LocalFlow.app INSIDE-OUT for notarization (#11).
+# Developer ID code-sign TRDSpeak.app INSIDE-OUT for notarization (#11).
 #
 # Signs every nested Mach-O first, then the .app last — each with the Hardened
 # Runtime (--options runtime) and a secure timestamp (--timestamp). The final
 # .app sign also applies entitlements.plist (#10), which codesign attaches to
-# the bundle's main executable (Contents/MacOS/LocalFlow). We do NOT use --deep:
+# the bundle's main executable (Contents/MacOS/TRDSpeak). We do NOT use --deep:
 # nested code is signed explicitly so nothing is left ad-hoc.
 #
-# Usage:   ./sign_app.sh [path/to/LocalFlow.app]
+# Usage:   ./sign_app.sh [path/to/TRDSpeak.app]
 # Identity is read from $CODESIGN_IDENTITY (never a secret — it's a cert name);
 # defaults to the Developer ID recorded in RELEASING.md.
 set -euo pipefail
 
 cd "$(dirname "$0")"
 REPO="$(pwd)"
-APP="${1:-$REPO/dist/LocalFlow.app}"
+APP="${1:-$REPO/dist/TRDSpeak.app}"
 ENTITLEMENTS="$REPO/entitlements.plist"
 IDENTITY="${CODESIGN_IDENTITY:-Developer ID Application: Filippo Diotalevi (2FV8WB29XC)}"
 
 if [ ! -d "$APP" ]; then
-    echo "Error: $APP not found — build it first: .venv/bin/pyinstaller --noconfirm LocalFlow.spec" >&2
+    echo "Error: $APP not found — build it first: .venv/bin/pyinstaller --noconfirm TRDSpeak.spec" >&2
     exit 1
 fi
 if [ ! -f "$ENTITLEMENTS" ]; then
@@ -60,8 +60,8 @@ if [ -d "$PYFW" ]; then
 fi
 
 # 3. The .app last. Sealing the bundle signs the main executable
-#    (Contents/MacOS/LocalFlow) WITH the Hardened Runtime entitlements.
-echo "  [3/3] LocalFlow.app (with entitlements) ..."
+#    (Contents/MacOS/TRDSpeak) WITH the Hardened Runtime entitlements.
+echo "  [3/3] TRDSpeak.app (with entitlements) ..."
 codesign --force --options runtime --timestamp \
     --entitlements "$ENTITLEMENTS" --sign "$IDENTITY" "$APP"
 

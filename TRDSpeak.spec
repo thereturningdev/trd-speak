@@ -1,7 +1,7 @@
 # -*- mode: python ; coding: utf-8 -*-
-# PyInstaller spec for the LocalFlow DISTRIBUTION build (arm64, self-contained).
-# See RELEASING.md. Build with:  .venv/bin/pyinstaller --noconfirm LocalFlow.spec
-# Output: dist/LocalFlow.app  (no repo or .venv required at runtime).
+# PyInstaller spec for the TRD Speak DISTRIBUTION build (arm64, self-contained).
+# See RELEASING.md. Build with:  .venv/bin/pyinstaller --noconfirm TRDSpeak.spec
+# Output: dist/TRDSpeak.app  (no repo or .venv required at runtime).
 
 import os
 
@@ -70,7 +70,7 @@ exe = EXE(
     a.scripts,
     [],
     exclude_binaries=True,
-    name="LocalFlow",
+    name="TRDSpeak",
     debug=False,
     bootloader_ignore_signals=False,
     strip=False,
@@ -85,18 +85,18 @@ coll = COLLECT(
     a.datas,
     strip=False,
     upx=False,
-    name="LocalFlow",
+    name="TRDSpeak",
 )
 
 app = BUNDLE(
     coll,
-    name="LocalFlow.app",
+    name="TRDSpeak.app",
     icon="assets/AppIcon.icns",
-    bundle_identifier="dev.local-flow.app",
+    bundle_identifier="com.thereturningdev.speak",
     version="0.1.0",
     info_plist={
-        "CFBundleName": "LocalFlow",
-        "CFBundleDisplayName": "LocalFlow",
+        "CFBundleName": "TRD Speak",
+        "CFBundleDisplayName": "TRD Speak",
         "CFBundleShortVersionString": "0.1.0",  # marketing version
         "CFBundleVersion": "1",                 # build number — bump every build, must increase
         "LSMinimumSystemVersion": "12.0",
@@ -106,7 +106,7 @@ app = BUNDLE(
         "LSUIElement": False,
         "NSHighResolutionCapable": True,
         "NSMicrophoneUsageDescription":
-            "LocalFlow records your voice while the hotkey is held, to "
+            "TRD Speak records your voice while the hotkey is held, to "
             "transcribe it locally on this machine.",
     },
 )

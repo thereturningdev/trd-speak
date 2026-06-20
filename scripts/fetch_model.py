@@ -2,7 +2,7 @@
 
 Downloads (or reuses the Hugging Face cache for) the default base.en CTranslate2
 model into models/faster-whisper-base.en/ as real files, so PyInstaller can
-embed it (see LocalFlow.spec) and the shipped app transcribes offline with no
+embed it (see TRDSpeak.spec) and the shipped app transcribes offline with no
 first-run download. Run before the distribution build. Idempotent.
 
 Force cache-only (no network) with: HF_HUB_OFFLINE=1 python scripts/fetch_model.py

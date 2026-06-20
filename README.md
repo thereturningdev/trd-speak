@@ -1,4 +1,4 @@
-# local-flow
+# TRD Speak
 
 Minimal push-to-talk dictation for macOS, running entirely on your machine.
 Hold a hotkey combo, speak, release — your words are transcribed locally with
@@ -19,17 +19,17 @@ walks through install, permissions, and first dictation step by step.
 ## Quick start
 
 ```sh
-git clone <repo-url> local-flow
-cd local-flow
+git clone <repo-url> trd-speak
+cd trd-speak
 ./setup.sh           # venv, dependencies, model download
-./make_app.sh        # builds LocalFlow.app
-open LocalFlow.app
+./make_app.sh        # builds TRDSpeak.app
+open TRDSpeak.app
 ```
 
-That's it. LocalFlow shows up in the **Dock** and the **menu bar**. On a
+That's it. TRD Speak shows up in the **Dock** and the **menu bar**. On a
 fresh machine the menu bar icon is **⚠️** — the app needs three permissions,
 and it deliberately does **not** throw dialogs at you on launch. You get one
-notification ("LocalFlow needs setup — click the ⚠️ icon in the menu bar")
+notification ("TRD Speak needs setup — click the ⚠️ icon in the menu bar")
 and that's it: **the ⚠️ menu itself is the setup wizard**, one step at a
 time.
 
@@ -42,13 +42,13 @@ their turn.
    Allow/Deny prompt (or, if you denied it before, the row opens the
    Microphone privacy pane so you can flip the switch). Applies
    immediately — the menu checks it off and moves to step 2.
-2. **Step 2 — Accessibility.** Click the row: macOS registers LocalFlow in
+2. **Step 2 — Accessibility.** Click the row: macOS registers TRD Speak in
    the Accessibility pane and usually shows its own dialog with an "Open
-   System Settings" button — follow it and switch on **LocalFlow**. (If the
+   System Settings" button — follow it and switch on **TRD Speak**. (If the
    dialog is gone, click the row again and it opens the pane directly.)
    Applies immediately, no restart.
 3. **Step 3 — Input Monitoring.** Same drill: click the row, follow macOS's
-   dialog (or re-click to open the pane), switch on **LocalFlow**. This is
+   dialog (or re-click to open the pane), switch on **TRD Speak**. This is
    the one permission macOS may tie to a restart: when you flip the toggle,
    **System Settings itself** offers "Quit & Reopen" — accept it and the
    relaunched app boots straight to Ready.
@@ -57,8 +57,8 @@ The app re-checks every couple of seconds and never restarts itself. Once
 all three permissions are in place it simply finishes starting up
 in-process. Only if macOS insists on a fresh process for the new Input
 Monitoring grant (and you skipped System Settings' "Quit & Reopen") does
-the menu change to **"Setup complete — restart LocalFlow to finish"** with
-a single **"Restart LocalFlow now"** row — the restart happens only when
+the menu change to **"Setup complete — restart TRD Speak to finish"** with
+a single **"Restart TRD Speak now"** row — the restart happens only when
 *you* click it.
 
 When the icon shows **🎤 Ready**, focus any text field, hold **Ctrl+Shift**
@@ -91,7 +91,7 @@ its own. And you can revoke a permission at any time; the icon goes back to
   you can change the dictate and re-paste shortcuts without editing
   `config.toml`: click a field, *press* the combo you want, and Save. The new
   shortcut applies immediately — no restart — and persists across launches.
-- The menu always ends with **Open Log** and **Quit LocalFlow**.
+- The menu always ends with **Open Log** and **Quit TRD Speak**.
 - The **Dock icon** is visible while the app runs; clicking it opens the
   menu bar menu, so it always leads straight to the controls.
 - On first launch with missing permissions the app stays quiet: no system
@@ -101,12 +101,12 @@ its own. And you can revoke a permission at any time; the icon goes back to
   at a time (Microphone, then Accessibility, then Input Monitoring).
 - The app never restarts itself. If a restart is needed at all, either
   System Settings offers its own "Quit & Reopen" when you flip the Input
-  Monitoring toggle, or the menu offers a "Restart LocalFlow now" row that
+  Monitoring toggle, or the menu offers a "Restart TRD Speak now" row that
   acts only when you click it.
-- Status lines also go to `~/Library/Logs/local-flow.log` (`tail -f` to
+- Status lines also go to `~/Library/Logs/trd-speak.log` (`tail -f` to
   watch).
-- Stop it from the menu ("Quit LocalFlow") or with `./stop.sh`.
-- To start dictation automatically at login, add LocalFlow in
+- Stop it from the menu ("Quit TRD Speak") or with `./stop.sh`.
+- To start dictation automatically at login, add TRD Speak in
   **System Settings -> General -> Login Items**.
 - The bundle bakes in this folder's absolute path and is ad-hoc signed:
   re-run `./make_app.sh` if you move the folder, and expect macOS to ask you
@@ -114,9 +114,9 @@ its own. And you can revoke a permission at any time; the icon goes back to
 
 ### Terminal alternative (dev)
 
-You can also run local-flow directly in a terminal with `./run.sh`. In that
+You can also run TRD Speak directly in a terminal with `./run.sh`. In that
 case the three permissions attach to your **terminal app** (Terminal,
-iTerm2, …) instead of LocalFlow — grant them in System Settings -> Privacy &
+iTerm2, …) instead of TRD Speak — grant them in System Settings -> Privacy &
 Security manually. Don't run the app and `./run.sh` at the same time — both
 would react to the hotkey and paste twice.
 
@@ -148,7 +148,7 @@ apply changes.
 
 ### Transcription engine
 
-local-flow transcribes locally with faster-whisper, which runs on the CPU and
+TRD Speak transcribes locally with faster-whisper, which runs on the CPU and
 is light to install.
 
 Valid key names for `hotkey.keys`:
@@ -181,13 +181,13 @@ focused app and rarely collide with system shortcuts.
   the menu advances to the next step on its own (it re-checks every couple
   of seconds). Granting things directly in System Settings, in any order,
   works too — the steps check themselves off.
-- **The menu says "Setup complete — restart LocalFlow to finish"** — all
+- **The menu says "Setup complete — restart TRD Speak to finish"** — all
   permissions are granted, but macOS will only honor the fresh Input
-  Monitoring grant in a new process. Click **"Restart LocalFlow now"** (or
+  Monitoring grant in a new process. Click **"Restart TRD Speak now"** (or
   accept System Settings' own "Quit & Reopen" if it's still showing). The
   app never restarts on its own.
 - **The icon never leaves ⚠️ even though System Settings looks right** —
-  toggle the LocalFlow entry off and on in the relevant pane, or remove it
+  toggle the TRD Speak entry off and on in the relevant pane, or remove it
   (the "–" button) and click the menu row again. Rebuilding with
   `./make_app.sh` changes the ad-hoc signing identity, so after a rebuild
   macOS may require you to re-grant.
@@ -203,8 +203,8 @@ focused app and rarely collide with system shortcuts.
   missing, or the wrong input device is selected in Sound settings.
 - **Nothing seems to be running** — the app shows a Dock icon and a menu bar
   icon while running; if neither is there, check
-  `~/Library/Logs/local-flow.log` and start it again with
-  `open LocalFlow.app`.
+  `~/Library/Logs/trd-speak.log` and start it again with
+  `open TRDSpeak.app`.
 - **First transcription is slow** — the model is loaded into memory at startup;
   the very first inference also warms caches. Subsequent dictations are much
   faster. Smaller models (`base.en`, `tiny.en`) trade accuracy for speed.

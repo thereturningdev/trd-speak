@@ -1,6 +1,6 @@
 # Changelog
 
-All notable changes to LocalFlow are documented here. This project adheres to
+All notable changes to TRD Speak are documented here. This project adheres to
 [Semantic Versioning](https://semver.org/).
 
 ## 0.1.0 — first release
@@ -23,7 +23,7 @@ and pasted at the cursor.
   small UI (no editing `config.toml`); changes apply immediately and persist.
 - **Menu-bar + Dock app.** A status icon shows the state (⚠️ permissions, ⏳
   loading, 🎤 ready, 🔴 recording, ✍️ transcribing); logs at
-  `~/Library/Logs/local-flow.log`.
+  `~/Library/Logs/trd-speak.log`.
 - **Fully local & offline.** The default `base.en` Whisper model is embedded in
   the app; nothing leaves your machine and no download is needed at first run.
 
@@ -45,6 +45,6 @@ three macOS permissions, one step at a time. All three are required:
 
 ### Install
 
-Open `LocalFlow.dmg`, drag **LocalFlow** to **Applications**, and launch it.
+Open `TRDSpeak.dmg`, drag **TRD Speak** to **Applications**, and launch it.
 The app is signed with a Developer ID and notarized by Apple, so it opens with
 no Gatekeeper warning. Grant the three permissions via the ⚠️ menu.

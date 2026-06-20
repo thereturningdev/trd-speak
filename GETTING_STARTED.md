@@ -1,4 +1,4 @@
-# Getting started with local-flow
+# Getting started with TRD Speak
 
 This guide takes you from nothing to dictating into any app on your Mac in
 about 10 minutes (most of it is a one-time model download). No cloud, no
@@ -41,8 +41,8 @@ If they're already installed it says so — that's fine.
 ## 2. Install
 
 ```sh
-git clone <repo-url> local-flow
-cd local-flow
+git clone <repo-url> trd-speak
+cd trd-speak
 ./setup.sh
 ```
 
@@ -52,7 +52,7 @@ part, one time only). When it finishes:
 
 ```sh
 ./make_app.sh
-open LocalFlow.app
+open TRDSpeak.app
 ```
 
 > **Don't move the folder afterwards.** The app remembers where it was
@@ -72,9 +72,9 @@ walks you through setup, **one step at a time**:
    and exactly one row is clickable. Click it → macOS asks → **Allow**.
 2. The menu advances by itself within a couple of seconds. **Step 2:
    Accessibility** — click the row, follow macOS's dialog to System
-   Settings, switch on **LocalFlow**.
+   Settings, switch on **TRD Speak**.
 3. **Step 3: Input Monitoring** — same: click the row, switch on
-   **LocalFlow** in System Settings. If macOS asks to **quit and reopen**
+   **TRD Speak** in System Settings. If macOS asks to **quit and reopen**
    the app, accept — that's the only restart in the whole process.
 
 When the icon turns **🎤**, you're done. These grants survive reboots; you
@@ -117,7 +117,7 @@ model = "base.en"         # "tiny.en" = faster, "small.en" = more accurate
 name = "whisper"          # faster-whisper (the only engine)
 ```
 
-Restart the app (menu bar icon → Quit LocalFlow, then `open LocalFlow.app`)
+Restart the app (menu bar icon → Quit TRD Speak, then `open TRDSpeak.app`)
 to apply changes. The full option list is in the
 [README](README.md#configuration).
 
@@ -127,14 +127,14 @@ field, *press* the shortcut you want, and Save. It applies right away and is
 remembered next time.
 
 **Start at login:** System Settings → General → Login Items → add
-LocalFlow.
+TRD Speak.
 
 ## Day-to-day
 
 | What | How |
 | --- | --- |
-| Start | `open LocalFlow.app` (or double-click it in Finder) |
-| Stop | menu bar icon → **Quit LocalFlow** (or `./stop.sh`) |
+| Start | `open TRDSpeak.app` (or double-click it in Finder) |
+| Stop | menu bar icon → **Quit TRD Speak** (or `./stop.sh`) |
 | Is it running? | 🎤 in the menu bar (and a Dock icon) |
 | See what it's doing | menu bar icon → **Open Log** |
 | Recover a lost dictation | menu bar icon → **Recent Dictations** → click an entry to copy it, then paste into the right window |
@@ -156,7 +156,7 @@ permission by name.
 ./stop.sh
 ```
 
-Then delete the `local-flow` folder, remove LocalFlow from
+Then delete the `trd-speak` folder, remove TRD Speak from
 System Settings → Privacy & Security (Microphone, Input Monitoring,
 Accessibility), and optionally delete the downloaded model:
 `rm -rf ~/.cache/huggingface/hub/models--Systran--faster-whisper-base.en`.

@@ -1,4 +1,4 @@
-# Releasing LocalFlow
+# Releasing TRD Speak
 
 Release process for the **0.1** milestone. Tracked in issues #5–#17.
 
@@ -22,11 +22,11 @@ Release process for the **0.1** milestone. Tracked in issues #5–#17.
 ### Distribution build — `./make_release.sh`
 
 - For distribution to end users.
-- Self-contained: PyInstaller bundles Python + all dependencies into `LocalFlow.app`; no repo or `.venv` required.
+- Self-contained: PyInstaller bundles Python + all dependencies into `TRDSpeak.app`; no repo or `.venv` required.
 - arm64 only.
 - Developer ID-signed with Hardened Runtime + secure timestamp + entitlements.
 - Notarized with `trd-notary` and stapled.
-- Packaged as a signed, notarized, stapled `LocalFlow.dmg`.
+- Packaged as a signed, notarized, stapled `TRDSpeak.dmg`.
 
 ## Pipeline (distribution)
 
@@ -45,7 +45,7 @@ Release process for the **0.1** milestone. Tracked in issues #5–#17.
 ## One command (#14)
 
 `./make_release.sh` runs the whole distribution pipeline (steps 1–7 above) from a
-clean tree and leaves a notarized, stapled `dist/LocalFlow.dmg`:
+clean tree and leaves a notarized, stapled `dist/TRDSpeak.dmg`:
 
 ```sh
 ./make_release.sh
@@ -72,7 +72,7 @@ also be run individually.
 `./sign_app.sh [path]` signs the bundle **inside-out** with the Developer ID
 Application cert, Hardened Runtime (`--options runtime`), and a secure timestamp:
 every nested `.so`/`.dylib` and the embedded `Python.framework` first, then
-`LocalFlow.app` last. No `--deep` — nested code is signed explicitly. The final
+`TRDSpeak.app` last. No `--deep` — nested code is signed explicitly. The final
 sign attaches `entitlements.plist` (codesign puts it on the main executable).
 
 - Identity: `$CODESIGN_IDENTITY` (defaults to the Developer ID above).
@@ -82,7 +82,7 @@ sign attaches `entitlements.plist` (codesign puts it on the main executable).
   `disable-library-validation`.
 - **Keep `entitlements.plist` comment-free** — codesign's AMFI plist parser
   rejects XML comments (`AMFIUnserializeXML: syntax error`).
-- Verify: `codesign --verify --deep --strict --verbose=2 LocalFlow.app`.
+- Verify: `codesign --verify --deep --strict --verbose=2 TRDSpeak.app`.
 
 ## Notarize & staple (#12)
 
@@ -93,17 +93,17 @@ bundle (it checks first).
 
 - Profile: `$NOTARY_PROFILE` notarytool keychain profile (default: `trd-notary`).
 - On a non-`Accepted` verdict it prints `xcrun notarytool log <id>` and exits 1.
-- Verify: `xcrun stapler validate LocalFlow.app` and
-  `spctl -a -vvv -t exec LocalFlow.app` → `Notarized Developer ID`.
+- Verify: `xcrun stapler validate TRDSpeak.app` and
+  `spctl -a -vvv -t exec TRDSpeak.app` → `Notarized Developer ID`.
 
 ## Distributable DMG (#13)
 
 `./make_dmg.sh [path]` packages the notarized + stapled app into
-`dist/LocalFlow.dmg`: it stages the app plus an `/Applications` drop-target
+`dist/TRDSpeak.dmg`: it stages the app plus an `/Applications` drop-target
 symlink, builds a compressed UDZO DMG (`hdiutil`), signs the DMG with the
 Developer ID cert, notarizes the DMG directly (no zip), and staples it.
 
 - Requires the payload app to already be stapled (it checks).
-- Verify: `xcrun stapler validate LocalFlow.dmg` and
-  `spctl -a -t open --context context:primary-signature LocalFlow.dmg` →
+- Verify: `xcrun stapler validate TRDSpeak.dmg` and
+  `spctl -a -t open --context context:primary-signature TRDSpeak.dmg` →
   `Notarized Developer ID`.

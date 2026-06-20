@@ -255,7 +255,7 @@ class SettingsWindowController:
         window = AppKit.NSWindow.alloc().initWithContentRect_styleMask_backing_defer_(
             rect, style, AppKit.NSBackingStoreBuffered, False
         )
-        window.setTitle_("LocalFlow Configuration")
+        window.setTitle_("TRD Speak Configuration")
         window.setReleasedWhenClosed_(False)
         content = window.contentView()
 

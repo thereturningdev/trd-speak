@@ -3,7 +3,7 @@
 Mirrors flow.engine_state: the menu/settings-window choice is stored here,
 NOT written back into the hand-edited, commented config.toml. At startup this
 file takes precedence over config.toml (per-combo). A single JSON file at
-~/Library/Application Support/LocalFlow/hotkeys.json:
+~/Library/Application Support/TRD Speak/hotkeys.json:
     {"dictate": ["ctrl", "shift"], "repaste": ["cmd", "ctrl"]}
 """
 
@@ -14,7 +14,7 @@ from pathlib import Path
 from flow.config import validate_keys
 
 _DEFAULT_PATH = Path(
-    os.path.expanduser("~/Library/Application Support/LocalFlow/hotkeys.json")
+    os.path.expanduser("~/Library/Application Support/TRD Speak/hotkeys.json")
 )
 
 

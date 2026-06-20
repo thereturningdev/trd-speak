@@ -1,8 +1,8 @@
 #!/bin/bash
-# Stop any running local-flow instance (app bundle or terminal-launched).
+# Stop any running TRD Speak instance (app bundle or terminal-launched).
 cd "$(dirname "$0")"
 if pkill -f "$(pwd)/main.py" 2>/dev/null; then
-    echo "local-flow stopped."
+    echo "TRD Speak stopped."
 else
-    echo "local-flow is not running (note: instances started before stop.sh existed must be stopped with Ctrl+C in their terminal)."
+    echo "TRD Speak is not running (note: instances started before stop.sh existed must be stopped with Ctrl+C in their terminal)."
 fi

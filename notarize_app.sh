@@ -1,22 +1,22 @@
 #!/bin/bash
-# Notarize & staple LocalFlow.app for offline Gatekeeper acceptance (#12).
+# Notarize & staple TRDSpeak.app for offline Gatekeeper acceptance (#12).
 #
 # Submits the Developer ID-signed app (./sign_app.sh, #11) to Apple's notary
 # service, waits for the verdict, and staples the ticket into the bundle so it
 # launches on a clean Mac with no network.
 #
-# Usage:   ./notarize_app.sh [path/to/LocalFlow.app]
+# Usage:   ./notarize_app.sh [path/to/TRDSpeak.app]
 # Profile: $NOTARY_PROFILE  (notarytool keychain profile; default: trd-notary)
 set -euo pipefail
 
 cd "$(dirname "$0")"
 REPO="$(pwd)"
-APP="${1:-$REPO/dist/LocalFlow.app}"
+APP="${1:-$REPO/dist/TRDSpeak.app}"
 PROFILE="${NOTARY_PROFILE:-trd-notary}"
 ZIP="${TMPDIR:-/tmp}/$(basename "$APP" .app)-notarize.zip"
 
 if [ ! -d "$APP" ]; then
-    echo "Error: $APP not found — build (LocalFlow.spec) and sign (./sign_app.sh) it first." >&2
+    echo "Error: $APP not found — build (TRDSpeak.spec) and sign (./sign_app.sh) it first." >&2
     exit 1
 fi
 # Apple rejects anything not already Developer ID-signed with the Hardened Runtime.

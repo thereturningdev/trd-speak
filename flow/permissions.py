@@ -133,7 +133,7 @@ def request_permissions() -> None:
 
 
 def report(
-    terminal_hint: str = "LocalFlow (app mode) or your terminal app (./run.sh)",
+    terminal_hint: str = "TRD Speak (app mode) or your terminal app (./run.sh)",
 ) -> bool:
     """Print actionable warnings for any missing permission.
 
@@ -168,6 +168,6 @@ def report(
         )
     print(
         "  Grant them one step at a time from the app's own menu: click the\n"
-        "  ⚠️ LocalFlow icon in the menu bar and follow the steps.\n"
+        "  ⚠️ TRD Speak icon in the menu bar and follow the steps.\n"
     )
     return False

@@ -1,4 +1,4 @@
-"""Configuration loading for local-flow."""
+"""Configuration loading for TRD Speak."""
 
 import tomllib
 from dataclasses import dataclass, field

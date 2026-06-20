@@ -1,4 +1,4 @@
-# local-flow configuration
+# TRD Speak configuration
 # Delete this file (or any section/key) to fall back to the built-in defaults,
 # which are the same values shown below.
 
@@ -21,7 +21,7 @@
 #
 # You can also set this shortcut from the menu's "Configuration…" panel
 # (under "Recent Dictations") by pressing the combo you want. That choice is
-# saved to ~/Library/Application Support/LocalFlow/hotkeys.json and takes
+# saved to ~/Library/Application Support/TRD Speak/hotkeys.json and takes
 # precedence over the value here, the same way the engine choice does.
 keys = ["ctrl", "shift"]
 
@@ -37,7 +37,7 @@ keys = ["ctrl", "shift"]
 # emoji picker, or Cmd+Ctrl+F for fullscreen) cancels the re-paste.
 #
 # This shortcut can also be set from the menu's "Configuration…" panel; the
-# recorded combo is saved to ~/Library/Application Support/LocalFlow/hotkeys.json
+# recorded combo is saved to ~/Library/Application Support/TRD Speak/hotkeys.json
 # and takes precedence over the value here (same model as [hotkey] above).
 keys = ["cmd", "ctrl"]
 

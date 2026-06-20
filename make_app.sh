@@ -1,19 +1,19 @@
 #!/bin/bash
-# Build LocalFlow.app — a minimal app bundle so macOS permissions (Microphone,
-# Input Monitoring, Accessibility) attach to "LocalFlow" instead of your
+# Build TRDSpeak.app — a minimal app bundle so macOS permissions (Microphone,
+# Input Monitoring, Accessibility) attach to "TRD Speak" instead of your
 # terminal app. Requires the Xcode Command Line Tools (xcode-select --install).
 #
 # The bundle's executable is a small compiled launcher that runs the Python
 # process as a CHILD and waits. It must NOT exec/replace itself with Python:
 # macOS attributes permissions to the code identity of the running executable,
 # so an exec'd interpreter makes the prompts name "Python 3.12" instead of
-# LocalFlow. A live parent passes its app identity down to its children.
+# TRD Speak. A live parent passes its app identity down to its children.
 #
 # The child it spawns is a COPY of the real CPython Mach-O placed inside
-# Contents/MacOS (local-flow-python). LaunchServices names a checked-in app
+# Contents/MacOS (TRDSpeak-python). LaunchServices names a checked-in app
 # after the bundle enclosing its executable, so spawning .venv/bin/python
 # directly would register the GUI process as "Python" (org.python.python) —
-# wrong Dock label, and `lsappinfo info "LocalFlow"` would find nothing. The
+# wrong Dock label, and `lsappinfo info "TRD Speak"` would find nothing. The
 # interpreter links libpython by absolute path, so the copy still runs; the
 # launcher sets PYTHONEXECUTABLE=.venv/bin/python so it adopts the venv
 # (pyvenv.cfg, site-packages, sys.executable) exactly as before.
@@ -24,7 +24,7 @@ set -euo pipefail
 
 cd "$(dirname "$0")"
 REPO="$(pwd)"
-APP="$REPO/LocalFlow.app"
+APP="$REPO/TRDSpeak.app"
 
 if [ ! -x .venv/bin/python ]; then
     echo "Error: .venv missing — run ./setup.sh first." >&2
@@ -48,13 +48,13 @@ cat > "$APP/Contents/Info.plist" <<EOF
 <plist version="1.0">
 <dict>
     <key>CFBundlePackageType</key>      <string>APPL</string>
-    <key>CFBundleIdentifier</key>       <string>dev.local-flow.app</string>
-    <key>CFBundleName</key>             <string>LocalFlow</string>
-    <key>CFBundleExecutable</key>       <string>local-flow</string>
+    <key>CFBundleIdentifier</key>       <string>com.thereturningdev.speak</string>
+    <key>CFBundleName</key>             <string>TRD Speak</string>
+    <key>CFBundleExecutable</key>       <string>TRDSpeak</string>
     <key>CFBundleShortVersionString</key> <string>0.1.0</string>
     <key>CFBundleIconFile</key>         <string>AppIcon</string>
     <key>NSMicrophoneUsageDescription</key>
-    <string>LocalFlow records your voice while the hotkey is held, to transcribe it locally on this machine.</string>
+    <string>TRD Speak records your voice while the hotkey is held, to transcribe it locally on this machine.</string>
 </dict>
 </plist>
 EOF
@@ -96,7 +96,7 @@ rm -rf "$(dirname "$ICONSET")"
 # Resolve the Mach-O actually running when .venv/bin/python is invoked (the
 # bin/ entries are symlinks/stubs that re-exec the framework's Python.app
 # binary) and copy it into the bundle, so the GUI process checks in with
-# LaunchServices as LocalFlow instead of Python.
+# LaunchServices as TRD Speak instead of Python.
 PYBIN="$(.venv/bin/python - <<'PYEOF'
 import ctypes
 import os
@@ -107,7 +107,7 @@ ctypes.CDLL(None)._NSGetExecutablePath(buf, ctypes.byref(size))
 print(os.path.realpath(buf.value.decode()))
 PYEOF
 )"
-cp "$PYBIN" "$APP/Contents/MacOS/local-flow-python"
+cp "$PYBIN" "$APP/Contents/MacOS/TRDSpeak-python"
 
 LAUNCHER_SRC="$(mktemp -d)/launcher.c"
 cat > "$LAUNCHER_SRC" <<EOF
@@ -132,19 +132,19 @@ static void forward(int sig) {
 
 int main(void) {
     if (chdir(REPO) != 0) {
-        perror("LocalFlow: chdir " REPO);
+        perror("TRD Speak: chdir " REPO);
         return 1;
     }
 
     char log_path[1024];
     const char *home = getenv("HOME");
-    snprintf(log_path, sizeof log_path, "%s/Library/Logs/local-flow.log",
+    snprintf(log_path, sizeof log_path, "%s/Library/Logs/trd-speak.log",
              home ? home : "/tmp");
 
     struct stat st;
     if (stat(REPO "/.venv/bin/python", &st) != 0) {
-        system("osascript -e 'display dialog \"LocalFlow: .venv is missing. "
-               "Run ./setup.sh in the local-flow folder first.\" "
+        system("osascript -e 'display dialog \"TRD Speak: .venv is missing. "
+               "Run ./setup.sh in the trd-speak folder first.\" "
                "buttons {\"OK\"} default button 1' >/dev/null 2>&1");
         return 1;
     }
@@ -156,21 +156,21 @@ int main(void) {
     posix_spawn_file_actions_adddup2(&fa, STDOUT_FILENO, STDERR_FILENO);
 
     /* Lets the Python side relaunch the bundle after permissions change. */
-    setenv("LOCALFLOW_BUNDLE", REPO "/LocalFlow.app", 1);
+    setenv("TRDSPEAK_BUNDLE", REPO "/TRDSpeak.app", 1);
 
     /* The spawned binary is the bundle's copy of the CPython Mach-O, so
-     * LaunchServices identifies the GUI process as LocalFlow (Dock label,
+     * LaunchServices identifies the GUI process as TRD Speak (Dock label,
      * lsappinfo). PYTHONEXECUTABLE makes that copy adopt the .venv
      * (pyvenv.cfg lookup + sys.executable), exactly as if .venv/bin/python
      * had been run. */
     setenv("PYTHONEXECUTABLE", REPO "/.venv/bin/python", 1);
 
     /* -u: unbuffered stdout so the log file updates live */
-    char *argv[] = {REPO "/LocalFlow.app/Contents/MacOS/local-flow-python",
+    char *argv[] = {REPO "/TRDSpeak.app/Contents/MacOS/TRDSpeak-python",
                     "-u", REPO "/main.py", NULL};
     int err = posix_spawn(&child, argv[0], &fa, NULL, argv, environ);
     if (err != 0) {
-        fprintf(stderr, "LocalFlow: spawn failed: %d\n", err);
+        fprintf(stderr, "TRD Speak: spawn failed: %d\n", err);
         return 1;
     }
 
@@ -184,7 +184,7 @@ int main(void) {
 }
 EOF
 
-cc -O2 -o "$APP/Contents/MacOS/local-flow" "$LAUNCHER_SRC"
+cc -O2 -o "$APP/Contents/MacOS/TRDSpeak" "$LAUNCHER_SRC"
 rm -rf "$(dirname "$LAUNCHER_SRC")"
 
 codesign --force --deep --sign - "$APP"
@@ -194,13 +194,13 @@ cat <<EOF
 Built $APP
 
 Start it:        open "$APP"
-Watch its logs:  tail -f ~/Library/Logs/local-flow.log
+Watch its logs:  tail -f ~/Library/Logs/trd-speak.log
 Stop it:         ./stop.sh
 
 On first launch the menu bar icon shows ⚠️ — click it and the menu guides
 you through the three permissions (Microphone, Input Monitoring,
 Accessibility). The app restarts itself once all are granted.
 
-Tip: add LocalFlow to System Settings -> General -> Login Items to start
+Tip: add TRD Speak to System Settings -> General -> Login Items to start
 dictation automatically at login.
 EOF

@@ -9,7 +9,7 @@ import os
 from pathlib import Path
 
 _DEFAULT_PATH = Path(
-    os.path.expanduser("~/Library/Application Support/LocalFlow/engine")
+    os.path.expanduser("~/Library/Application Support/TRD Speak/engine")
 )
 
 

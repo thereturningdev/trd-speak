@@ -1,22 +1,22 @@
 #!/bin/bash
-# Build, sign, notarize & staple the distributable LocalFlow.dmg (#13).
+# Build, sign, notarize & staple the distributable TRDSpeak.dmg (#13).
 #
 # Packages the notarized + stapled app (./notarize_app.sh, #12) into a compressed
 # DMG with an /Applications drop target, signs the DMG with the Developer ID
 # cert, notarizes it, and staples the ticket so the download opens on a clean Mac
 # with no Gatekeeper warning.
 #
-# Usage:   ./make_dmg.sh [path/to/LocalFlow.app]
-# Output:  dist/LocalFlow.dmg
+# Usage:   ./make_dmg.sh [path/to/TRDSpeak.app]
+# Output:  dist/TRDSpeak.dmg
 # Env:     $CODESIGN_IDENTITY (default: RELEASING.md cert)
 #          $NOTARY_PROFILE    (default: trd-notary)
 set -euo pipefail
 
 cd "$(dirname "$0")"
 REPO="$(pwd)"
-APP="${1:-$REPO/dist/LocalFlow.app}"
-DMG="$REPO/dist/LocalFlow.dmg"
-VOLNAME="LocalFlow"
+APP="${1:-$REPO/dist/TRDSpeak.app}"
+DMG="$REPO/dist/TRDSpeak.dmg"
+VOLNAME="TRD Speak"
 IDENTITY="${CODESIGN_IDENTITY:-Developer ID Application: Filippo Diotalevi (2FV8WB29XC)}"
 PROFILE="${NOTARY_PROFILE:-trd-notary}"
 

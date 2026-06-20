@@ -1,5 +1,5 @@
 #!/bin/bash
-# One-time setup for local-flow: venv, dependencies, model download.
+# One-time setup for TRD Speak: venv, dependencies, model download.
 # Safe to re-run.
 set -euo pipefail
 
@@ -75,11 +75,11 @@ cat <<'EOF'
 
 Setup complete.
 
-Run ./make_app.sh, then open LocalFlow.app. On first launch the app stays
+Run ./make_app.sh, then open TRDSpeak.app. On first launch the app stays
 quiet — just a ⚠️ menu bar icon and one notification. Click the ⚠️ icon:
 its menu walks you through the three permissions one step at a time
 (1 Microphone, 2 Accessibility, 3 Input Monitoring). On the last step,
 System Settings itself may offer "Quit & Reopen" — accept it, or use the
-menu's "Restart LocalFlow now" row if it appears. The app never restarts
+menu's "Restart TRD Speak now" row if it appears. The app never restarts
 itself.
 EOF

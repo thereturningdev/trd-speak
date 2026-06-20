@@ -2,8 +2,8 @@
 __pycache__/
 *.pyc
 .DS_Store
-LocalFlow.app/
-.localflow.lock
+TRDSpeak.app/
+.trd-speak.lock
 config.toml
 build/
 dist/

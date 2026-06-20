@@ -1,5 +1,5 @@
 #!/bin/bash
-# Start local-flow.
+# Start TRD Speak.
 set -euo pipefail
 
 cd "$(dirname "$0")"

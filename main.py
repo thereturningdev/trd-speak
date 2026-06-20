@@ -1,4 +1,4 @@
-"""Entry point for local-flow."""
+"""Entry point for TRD Speak."""
 
 import argparse
 import fcntl
@@ -11,9 +11,9 @@ import sys
 # signed/notarized .app is read-only, so writing the lock next to __file__ (as a
 # source checkout does) fails once bundled. This path works for both modes.
 _APP_SUPPORT = pathlib.Path(
-    os.path.expanduser("~/Library/Application Support/LocalFlow")
+    os.path.expanduser("~/Library/Application Support/TRD Speak")
 )
-_LOCK_PATH = _APP_SUPPORT / ".localflow.lock"
+_LOCK_PATH = _APP_SUPPORT / ".trd-speak.lock"
 _lock_file = None  # module-level: keeps the lock fd alive for the process lifetime
 
 
@@ -36,14 +36,14 @@ def _notify(message: str) -> None:
     escaped = message.replace("\\", "\\\\").replace('"', '\\"')
     subprocess.Popen([
         "osascript", "-e",
-        f'display notification "{escaped}" with title "LocalFlow"',
+        f'display notification "{escaped}" with title "TRD Speak"',
     ])
 
 
 def _selftest() -> int:
     """Import every heavy/native dependency, then exercise PortAudio at runtime,
     to prove a frozen bundle is self-contained. Returns 0 on success. Used by the
-    release build's smoke test (`LocalFlow --selftest`), not by normal startup."""
+    release build's smoke test (`TRDSpeak --selftest`), not by normal startup."""
     import av  # noqa: F401
     import ctranslate2  # noqa: F401
     import faster_whisper  # noqa: F401
@@ -92,10 +92,10 @@ def main() -> None:
     from flow import __version__
 
     parser = argparse.ArgumentParser(
-        description="local-flow: local push-to-talk dictation for macOS"
+        description="TRD Speak: local push-to-talk dictation for macOS"
     )
     parser.add_argument(
-        "--version", action="version", version=f"LocalFlow {__version__}"
+        "--version", action="version", version=f"TRD Speak {__version__}"
     )
     parser.add_argument(
         "--config", metavar="PATH", default=None, help="path to config.toml"
@@ -118,8 +118,8 @@ def main() -> None:
     # Single-instance guard: System Settings' own quit-and-reopen races our
     # self-restart, and two instances must collapse to one cleanly.
     if not _acquire_single_instance_lock():
-        print("LocalFlow is already running")
-        _notify("LocalFlow is already running")
+        print("TRD Speak is already running")
+        _notify("TRD Speak is already running")
         sys.exit(0)
 
     from flow.config import load_config

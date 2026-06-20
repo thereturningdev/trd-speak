@@ -20,7 +20,7 @@ def _embedded_model_dir(model_name: str) -> str | None:
     """Path to the model bundled inside a frozen app, or None.
 
     The release build embeds the default model under
-    ``<bundle>/models/faster-whisper-<name>`` (see LocalFlow.spec), so the app
+    ``<bundle>/models/faster-whisper-<name>`` (see TRDSpeak.spec), so the app
     transcribes offline with no Hugging Face download. In a source checkout
     ``sys._MEIPASS`` is unset, so this returns None and faster-whisper resolves
     ``model_name`` from the Hugging Face cache/hub as before.

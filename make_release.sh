@@ -1,7 +1,7 @@
 #!/bin/bash
-# One-command distribution build for LocalFlow (#14).
+# One-command distribution build for TRD Speak (#14).
 #
-# Produces a notarized, stapled dist/LocalFlow.dmg that passes Gatekeeper on a
+# Produces a notarized, stapled dist/TRDSpeak.dmg that passes Gatekeeper on a
 # clean Mac, by chaining the release steps (#7-#13):
 #
 #   clean -> PyInstaller self-contained build -> sign inside-out (#11)
@@ -20,8 +20,8 @@ set -euo pipefail
 cd "$(dirname "$0")"
 REPO="$(pwd)"
 PY="$REPO/.venv/bin/python"
-APP="$REPO/dist/LocalFlow.app"
-DMG="$REPO/dist/LocalFlow.dmg"
+APP="$REPO/dist/TRDSpeak.app"
+DMG="$REPO/dist/TRDSpeak.dmg"
 MODEL_DIR="$REPO/models/faster-whisper-base.en"
 
 if [ ! -x "$PY" ]; then
@@ -43,7 +43,7 @@ echo "[1/5] Clean ..."
 rm -rf "$REPO/build" "$REPO/dist"
 
 echo "[2/5] PyInstaller self-contained build ..."
-"$PY" -m PyInstaller --noconfirm LocalFlow.spec
+"$PY" -m PyInstaller --noconfirm TRDSpeak.spec
 
 echo "[3/5] Sign inside-out (Developer ID + Hardened Runtime + entitlements) ..."
 ./sign_app.sh "$APP"

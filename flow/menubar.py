@@ -23,7 +23,7 @@ everything is granted it finishes IN-PROCESS: normal boot (model load +
 hotkey start) on a worker thread. Only if the event tap still cannot be
 created (macOS sometimes honors a fresh Input Monitoring grant only in a new
 process) does the menu switch to a final state offering a USER-initiated
-"Restart LocalFlow now" row. If the user instead accepted System Settings'
+"Restart TRD Speak now" row. If the user instead accepted System Settings'
 own "Quit & Reopen", the relaunched instance sees all-granted at startup and
 boots straight to Ready — same convergence.
 
@@ -47,7 +47,7 @@ from flow.app import App
 from flow.config import Config
 from flow.engines import ENGINE_NAMES, ENGINES
 
-LOG_PATH = os.path.expanduser("~/Library/Logs/local-flow.log")
+LOG_PATH = os.path.expanduser("~/Library/Logs/trd-speak.log")
 
 _STATE_ICONS = {
     "waiting": "⏳",
@@ -71,7 +71,7 @@ def _notify(message: str) -> None:
     escaped = message.replace("\\", "\\\\").replace('"', '\\"')
     subprocess.Popen([
         "osascript", "-e",
-        f'display notification "{escaped}" with title "LocalFlow"',
+        f'display notification "{escaped}" with title "TRD Speak"',
     ])
 
 
@@ -153,10 +153,10 @@ def _status_line(snap: dict) -> str:
 def _set_dock_icon(nsapp) -> None:
     """Use the bundle's mic icon in the Dock (also works in ./run.sh mode)."""
     candidates = []
-    bundle = os.environ.get("LOCALFLOW_BUNDLE")
+    bundle = os.environ.get("TRDSPEAK_BUNDLE")
     if bundle:
         candidates.append(Path(bundle))
-    candidates.append(Path(__file__).resolve().parent.parent / "LocalFlow.app")
+    candidates.append(Path(__file__).resolve().parent.parent / "TRDSpeak.app")
     for candidate in candidates:
         icns = candidate / "Contents" / "Resources" / "AppIcon.icns"
         if icns.is_file():
@@ -169,12 +169,12 @@ def _set_dock_icon(nsapp) -> None:
 def _relaunch() -> None:
     """USER-initiated quit + fresh start (a new process picks up the grant).
 
-    Never called automatically — only from the explicit "Restart LocalFlow
+    Never called automatically — only from the explicit "Restart TRD Speak
     now" menu row.
     """
-    bundle = os.environ.get("LOCALFLOW_BUNDLE")
+    bundle = os.environ.get("TRDSPEAK_BUNDLE")
     if bundle:
-        print("Restarting LocalFlow…")
+        print("Restarting TRD Speak…")
         # The helper must wait for THIS process to fully die before reopening:
         # teardown can exceed any fixed sleep (the whisper model is loaded by
         # now), and main.py's single-instance flock is only released at true
@@ -238,7 +238,7 @@ class _Delegate(NSObject):
             _open_pane(perm.anchor)
 
     def restartApp_(self, _sender) -> None:
-        """USER-initiated relaunch ("Restart LocalFlow now" row)."""
+        """USER-initiated relaunch ("Restart TRD Speak now" row)."""
         _relaunch()
 
     def selectEngine_(self, sender) -> None:
@@ -380,7 +380,7 @@ class MenuBar:
         # Final-state row: shown only when a fresh Input Monitoring grant
         # needs a new process (the user clicks — the app never auto-restarts).
         self._restart_item = AppKit.NSMenuItem.alloc().initWithTitle_action_keyEquivalent_(
-            "Restart LocalFlow now", "restartApp:", ""
+            "Restart TRD Speak now", "restartApp:", ""
         )
         self._restart_item.setTarget_(delegate)
         self._restart_item.setHidden_(True)
@@ -441,7 +441,7 @@ class MenuBar:
         menu.addItem_(log_item)
 
         quit_item = AppKit.NSMenuItem.alloc().initWithTitle_action_keyEquivalent_(
-            "Quit LocalFlow", "terminate:", "q"
+            "Quit TRD Speak", "terminate:", "q"
         )
         quit_item.setTarget_(AppKit.NSApplication.sharedApplication())
         menu.addItem_(quit_item)
@@ -504,7 +504,7 @@ class MenuBar:
         restart = self._restart_needed and not missing
         if restart:
             self._item.button().setTitle_(_STATE_ICONS["permissions"])
-            self._header.setTitle_("Setup complete — restart LocalFlow to finish")
+            self._header.setTitle_("Setup complete — restart TRD Speak to finish")
         elif missing:
             current = next(
                 p for p in permissions.PERMISSIONS if p.key == missing[0]
@@ -596,7 +596,7 @@ def run(config: Config) -> None:
     # Nap but still lets the Mac sleep normally.
     delegate._app_nap = Foundation.NSProcessInfo.processInfo().beginActivityWithOptions_reason_(
         Foundation.NSActivityUserInitiatedAllowingIdleSystemSleep,
-        "LocalFlow push-to-talk hotkey must keep receiving key events",
+        "TRD Speak push-to-talk hotkey must keep receiving key events",
     )
 
     # The settings-window/menu choice (App Support JSON) takes precedence over
@@ -651,13 +651,13 @@ def run(config: Config) -> None:
                 print(
                     "Setup is complete, but macOS will only honor the new "
                     "Input Monitoring grant in a fresh process — click "
-                    "\"Restart LocalFlow now\" in the ⚠️ menu."
+                    "\"Restart TRD Speak now\" in the ⚠️ menu."
                 )
                 state["boot_failed"] = True
                 ui.set_restart_needed()  # thread-safe (_on_main inside)
                 _notify(
                     "Setup complete — click the ⚠️ icon and choose "
-                    "\"Restart LocalFlow now\" to finish."
+                    "\"Restart TRD Speak now\" to finish."
                 )
             else:
                 state["boot_ok"] = True
@@ -673,7 +673,7 @@ def run(config: Config) -> None:
         # no Settings panes, no dialogs — only the ⚠️ icon, the log lines,
         # and this single notification. The menu is the onboarding.
         permissions.report()  # print-only
-        _notify("LocalFlow needs setup — click the ⚠️ icon in the menu bar.")
+        _notify("TRD Speak needs setup — click the ⚠️ icon in the menu bar.")
 
     def poll(_timer) -> None:
         state["timer_fires"] += 1
@@ -728,7 +728,7 @@ def run(config: Config) -> None:
                 ):
                     # Everything granted: finish IN-PROCESS — no restart. If
                     # the hotkey tap still cannot start, boot() switches the
-                    # menu to the user-initiated "Restart LocalFlow now" state.
+                    # menu to the user-initiated "Restart TRD Speak now" state.
                     boot()
                 state["was_missing"] = bool(missing)
 
