@@ -215,7 +215,6 @@ focused app and rarely collide with system shortcuts.
 Planned but not yet implemented:
 
 - LLM post-processing to clean up filler words and punctuation
-- A configuration UI
 
 ## License
 

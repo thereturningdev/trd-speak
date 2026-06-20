@@ -89,8 +89,13 @@ def _selftest_model() -> int:
 
 
 def main() -> None:
+    from flow import __version__
+
     parser = argparse.ArgumentParser(
         description="local-flow: local push-to-talk dictation for macOS"
+    )
+    parser.add_argument(
+        "--version", action="version", version=f"LocalFlow {__version__}"
     )
     parser.add_argument(
         "--config", metavar="PATH", default=None, help="path to config.toml"
