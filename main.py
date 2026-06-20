@@ -100,6 +100,28 @@ def _selftest_model() -> int:
     return 0
 
 
+def _preflight_tcc() -> int:
+    """Print "<listen> <post>" (1/0 each) for Input Monitoring and Accessibility.
+
+    CGPreflightListenEventAccess / CGPreflightPostEventAccess cache their result
+    for a process's whole lifetime, so a long-running app can never observe a
+    grant made AFTER launch. The menu bar's poll therefore re-checks by running
+    THIS in a fresh child of the same signed binary (same TCC identity, uncached
+    answer). It MUST run before _redirect_frozen_logs() so the line reaches the
+    parent's captured pipe, not the log file, and writes to fd 1 directly
+    because a windowed (console=False) build's sys.stdout may be a stub.
+    """
+    import ctypes
+
+    cg = ctypes.cdll.LoadLibrary(
+        "/System/Library/Frameworks/CoreGraphics.framework/CoreGraphics"
+    )
+    listen = int(bool(cg.CGPreflightListenEventAccess()))
+    post = int(bool(cg.CGPreflightPostEventAccess()))
+    os.write(1, f"{listen} {post}\n".encode())
+    return 0
+
+
 def _redirect_frozen_logs() -> None:
     """Send stdout/stderr to ~/Library/Logs/trd-speak.log in the frozen app.
 
@@ -144,12 +166,20 @@ def main() -> None:
         "--selftest-model", action="store_true",
         help="load the embedded model and transcribe once, then exit",
     )
+    parser.add_argument(
+        "--preflight", action="store_true",
+        help="print the Input Monitoring/Accessibility preflight state and exit "
+             "(internal: the menu bar's fresh-process permission re-check)",
+    )
     args = parser.parse_args()
 
     if args.selftest:
         sys.exit(_selftest())
     if args.selftest_model:
         sys.exit(_selftest_model())
+    # Before _redirect_frozen_logs(): the result must reach the parent's pipe.
+    if args.preflight:
+        sys.exit(_preflight_tcc())
 
     _redirect_frozen_logs()
 

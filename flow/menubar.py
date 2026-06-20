@@ -76,11 +76,23 @@ def _notify(message: str) -> None:
 
 
 def _open_pane(anchor: str) -> None:
-    """Open System Settings at a Privacy & Security anchor."""
-    subprocess.Popen([
-        "open",
-        f"x-apple.systempreferences:com.apple.preference.security?{anchor}",
-    ])
+    """Open System Settings at a Privacy & Security anchor.
+
+    Uses NSWorkspace, NOT the `open` CLI: under the new System Settings the
+    `open <url>` tool regressed and, from a background menu-bar process, lands
+    on the General pane or fails to navigate (and Popen swallows the error, so
+    the failure is invisible). NSWorkspace.openURL_ still deep-links correctly
+    and activates System Settings. The modern host is
+    com.apple.settings.PrivacySecurity.extension (the legacy
+    com.apple.preference.security still resolves but is deprecated); the anchors
+    (Privacy_Microphone / Privacy_Accessibility / Privacy_ListenEvent) are
+    unchanged.
+    """
+    url = Foundation.NSURL.URLWithString_(
+        "x-apple.systempreferences:"
+        f"com.apple.settings.PrivacySecurity.extension?{anchor}"
+    )
+    AppKit.NSWorkspace.sharedWorkspace().openURL_(url)
 
 
 def _mic_ok(mic: str) -> bool:
@@ -118,16 +130,26 @@ def _snapshot_fresh() -> dict:
     # process exiting with a live GCD thread crashes with "BUG IN CLIENT OF
     # LIBPTHREAD: pthread_exit()...". Mic state is read in-process instead;
     # AVCaptureDevice.authorizationStatusForMediaType_ is live, not cached.
-    code = (
-        "import ctypes;"
-        "cg = ctypes.cdll.LoadLibrary("
-        "'/System/Library/Frameworks/CoreGraphics.framework/CoreGraphics');"
-        "print(int(bool(cg.CGPreflightListenEventAccess())),"
-        " int(bool(cg.CGPreflightPostEventAccess())))"
-    )
+    if getattr(sys, "frozen", False):
+        # Frozen: sys.executable is the .app binary, NOT a Python interpreter,
+        # so `-c <code>` is rejected by argparse (empty stdout -> stale
+        # fallback -> a post-launch Accessibility/Input-Monitoring grant is
+        # never seen). Re-run the same signed binary with its internal
+        # --preflight flag: same TCC identity, fresh (uncached) preflight.
+        cmd = [sys.executable, "--preflight"]
+    else:
+        # Dev (./run.sh): sys.executable IS a real Python interpreter.
+        code = (
+            "import ctypes;"
+            "cg = ctypes.cdll.LoadLibrary("
+            "'/System/Library/Frameworks/CoreGraphics.framework/CoreGraphics');"
+            "print(int(bool(cg.CGPreflightListenEventAccess())),"
+            " int(bool(cg.CGPreflightPostEventAccess())))"
+        )
+        cmd = [sys.executable, "-c", code]
     try:
         out = subprocess.run(
-            [sys.executable, "-c", code],
+            cmd,
             capture_output=True, timeout=15, text=True,
         ).stdout.split()
         return {
