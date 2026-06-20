@@ -45,10 +45,21 @@ try:
 except Exception:
     pass
 
-# PyObjC frameworks the app touches, plus the whole flow package.
+# PyObjC frameworks the app touches. AppKit/Foundation/Quartz/objc are covered
+# by PyInstaller's bundled hooks, so a hidden import suffices. The AV/audio
+# frameworks have NO hooks: a bare hidden import bundles the .so but not the
+# package's pure-Python _metadata, so `import AVFoundation` half-loads and
+# mic_status() falls to "unknown" — and the Microphone prompt then never fires.
+# collect_all pulls the full packages (incl. AVFoundation's own deps: AVFAudio,
+# CoreMedia, CoreAudio, Foundation).
+for pkg in ("AVFoundation", "AVFAudio", "CoreMedia", "CoreAudio"):
+    d, b, h = collect_all(pkg)
+    datas += d
+    binaries += b
+    hiddenimports += h
+
 hiddenimports += [
     "objc", "AppKit", "Foundation", "Quartz",
-    "AVFoundation", "CoreMedia", "CoreAudio",
 ]
 hiddenimports += collect_submodules("flow")
 

@@ -68,7 +68,19 @@ def _selftest() -> int:
     except Exception as exc:  # no input device on this machine, etc.
         audio = f"no usable input device ({exc})"
 
-    print(f"selftest OK ({pa_version}; {len(devices)} devices; {audio})")
+    # Prove the PyObjC AV stack actually loaded. A half-collected AVFoundation
+    # still imports but can't answer, so mic_status() returns "unknown" and the
+    # Microphone prompt never fires (see TRDSpeak.spec). Fail loudly if so.
+    import AVFoundation  # noqa: F401
+
+    from flow import permissions
+
+    mic = permissions.mic_status()
+    if mic == "unknown":
+        print("selftest FAILED: AVFoundation unavailable — Microphone prompt cannot fire")
+        return 1
+
+    print(f"selftest OK ({pa_version}; {len(devices)} devices; {audio}; mic={mic})")
     return 0
 
 
@@ -86,6 +98,30 @@ def _selftest_model() -> int:
     out = transcriber.transcribe(np.zeros(16000, dtype=np.float32))
     print(f"model OK (transcript={out!r})")
     return 0
+
+
+def _redirect_frozen_logs() -> None:
+    """Send stdout/stderr to ~/Library/Logs/trd-speak.log in the frozen app.
+
+    A Finder-launched .app has no terminal, and — unlike the dev launcher, which
+    redirects in the shell — the PyInstaller build had nothing capturing its
+    output, so prints, tracebacks and the menu's "Open Log" went nowhere. Mirror
+    the dev launcher: append to the log file, line-buffered. dup2 onto fds 1/2 so
+    native (C-level) writes land there too; a windowed build's sys.stdout may be
+    a devnull stub, so don't rely on it.
+    """
+    if not getattr(sys, "frozen", False):
+        return
+    log_path = os.path.expanduser("~/Library/Logs/trd-speak.log")
+    try:
+        os.makedirs(os.path.dirname(log_path), exist_ok=True)
+        f = open(log_path, "a", buffering=1)
+        os.dup2(f.fileno(), 1)
+        os.dup2(f.fileno(), 2)
+        sys.stdout = f
+        sys.stderr = f
+    except Exception:
+        pass
 
 
 def main() -> None:
@@ -114,6 +150,8 @@ def main() -> None:
         sys.exit(_selftest())
     if args.selftest_model:
         sys.exit(_selftest_model())
+
+    _redirect_frozen_logs()
 
     # Single-instance guard: System Settings' own quit-and-reopen races our
     # self-restart, and two instances must collapse to one cleanly.
