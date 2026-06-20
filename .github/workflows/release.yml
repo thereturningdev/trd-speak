@@ -12,9 +12,10 @@ name: Release
 # see .github/RELEASING-CI.md for how to produce each:
 #   MACOS_CERT_P12_BASE64  - Developer ID Application cert + key, .p12, base64
 #   MACOS_CERT_PASSWORD    - the .p12 export password
-#   NOTARY_APPLE_ID        - Apple ID email used for notarization
-#   NOTARY_PASSWORD        - app-specific password for that Apple ID
-#   NOTARY_TEAM_ID         - Apple Developer Team ID (2FV8WB29XC)
+#   AC_API_KEY_P8          - App Store Connect API key — the .p8 file CONTENTS
+#   AC_API_KEY_ID          - that key's Key ID
+#   AC_API_ISSUER_ID       - that key's Issuer ID
+# (Same App Store Connect API key you already use in your other project.)
 
 on:
   push:
@@ -88,17 +89,20 @@ jobs:
           echo "Signing identities available:"
           security find-identity -v -p codesigning "$KEYCHAIN"
 
-      - name: Store notarytool credentials
+      - name: Store notarytool credentials (App Store Connect API key)
         env:
-          NOTARY_APPLE_ID: ${{ secrets.NOTARY_APPLE_ID }}
-          NOTARY_PASSWORD: ${{ secrets.NOTARY_PASSWORD }}
-          NOTARY_TEAM_ID: ${{ secrets.NOTARY_TEAM_ID }}
+          AC_API_KEY_P8: ${{ secrets.AC_API_KEY_P8 }}
+          AC_API_KEY_ID: ${{ secrets.AC_API_KEY_ID }}
+          AC_API_ISSUER_ID: ${{ secrets.AC_API_ISSUER_ID }}
         run: |
+          KEY="$RUNNER_TEMP/AuthKey.p8"
+          printf '%s\n' "$AC_API_KEY_P8" > "$KEY"
           xcrun notarytool store-credentials "$NOTARY_PROFILE" \
-            --apple-id "$NOTARY_APPLE_ID" \
-            --password "$NOTARY_PASSWORD" \
-            --team-id "$NOTARY_TEAM_ID" \
+            --key "$KEY" \
+            --key-id "$AC_API_KEY_ID" \
+            --issuer "$AC_API_ISSUER_ID" \
             --keychain "$RUNNER_TEMP/build.keychain-db"
+          rm -f "$KEY"
 
       - name: Build, sign, notarize, staple and package the DMG
         run: ./make_release.sh

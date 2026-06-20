@@ -25,9 +25,14 @@ secret**.
 |--------|------------|
 | `MACOS_CERT_P12_BASE64` | Developer ID Application certificate **and private key**, exported as `.p12`, base64-encoded |
 | `MACOS_CERT_PASSWORD` | the password you set when exporting the `.p12` |
-| `NOTARY_APPLE_ID` | the Apple ID email used for notarization |
-| `NOTARY_PASSWORD` | an **app-specific password** for that Apple ID (appleid.apple.com → Sign-In and Security → App-Specific Passwords) |
-| `NOTARY_TEAM_ID` | your Apple Developer Team ID — `2FV8WB29XC` |
+| `AC_API_KEY_P8` | App Store Connect API key — the **contents** of the `AuthKey_XXXX.p8` file |
+| `AC_API_KEY_ID` | that key's **Key ID** |
+| `AC_API_ISSUER_ID` | that key's **Issuer ID** |
+
+The three `AC_API_*` values are the **same App Store Connect API key you already
+use for notarization in your other project** — reuse those exact values (or
+promote them to Organization secrets so both repos share them). Notarization
+uses this API key, not an app-specific password.
 
 ### Producing `MACOS_CERT_P12_BASE64`
 
