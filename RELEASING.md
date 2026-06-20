@@ -19,7 +19,7 @@ Release process for the **0.1** milestone. Tracked in issues #5–#17.
 - Repo-linked: the launcher `chdir`s to the repo and runs the repo `.venv` via `PYTHONEXECUTABLE`.
 - Not distributable (depends on the repo and `.venv` existing at a fixed path).
 
-### Distribution build — `./make_release.sh` (to be implemented, #14)
+### Distribution build — `./make_release.sh`
 
 - For distribution to end users.
 - Self-contained: PyInstaller bundles Python + all dependencies into `LocalFlow.app`; no repo or `.venv` required.
@@ -41,6 +41,31 @@ Release process for the **0.1** milestone. Tracked in issues #5–#17.
 9. Version 0.1.0, notes, tag — #15
 10. Clean-machine QA — #16
 11. Publish GitHub Release — #17
+
+## One command (#14)
+
+`./make_release.sh` runs the whole distribution pipeline (steps 1–7 above) from a
+clean tree and leaves a notarized, stapled `dist/LocalFlow.dmg`:
+
+```sh
+./make_release.sh
+```
+
+Prerequisites (one-time):
+
+- `./setup.sh` — creates `.venv`; then `pip install -r requirements-build.txt` (PyInstaller).
+- Developer ID Application cert imported into the login keychain.
+- notarytool keychain profile `trd-notary` (`xcrun notarytool store-credentials`).
+- Xcode Command Line Tools.
+
+No secrets are stored in the repo — the cert lives in the keychain and the notary
+credential in the keychain profile. Override the names if needed:
+`CODESIGN_IDENTITY=… NOTARY_PROFILE=… ./make_release.sh`.
+
+It self-checks at the end (`stapler validate` + `spctl` on both the app and the
+DMG). The model is fetched automatically if `models/faster-whisper-base.en` is
+missing. The step scripts (`sign_app.sh`, `notarize_app.sh`, `make_dmg.sh`) can
+also be run individually.
 
 ## Code-signing (#11)
 
