@@ -58,3 +58,15 @@ sign attaches `entitlements.plist` (codesign puts it on the main executable).
 - **Keep `entitlements.plist` comment-free** — codesign's AMFI plist parser
   rejects XML comments (`AMFIUnserializeXML: syntax error`).
 - Verify: `codesign --verify --deep --strict --verbose=2 LocalFlow.app`.
+
+## Notarize & staple (#12)
+
+`./notarize_app.sh [path]` zips the signed app (`ditto -c -k --keepParent`),
+submits it to Apple's notary service and waits, then staples the ticket so the
+app launches on a clean Mac offline. Runs only on a Hardened-Runtime-signed
+bundle (it checks first).
+
+- Profile: `$NOTARY_PROFILE` notarytool keychain profile (default: `trd-notary`).
+- On a non-`Accepted` verdict it prints `xcrun notarytool log <id>` and exits 1.
+- Verify: `xcrun stapler validate LocalFlow.app` and
+  `spctl -a -vvv -t exec LocalFlow.app` → `Notarized Developer ID`.
