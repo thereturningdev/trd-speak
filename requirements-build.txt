@@ -1,0 +1,4 @@
+# Build-only dependencies for the distribution build (see RELEASING.md).
+# Install into the venv before running: .venv/bin/pyinstaller --noconfirm LocalFlow.spec
+pyinstaller>=6.21
+pyinstaller-hooks-contrib>=2026.6

@@ -1,0 +1,96 @@
+# -*- mode: python ; coding: utf-8 -*-
+# PyInstaller spec for the LocalFlow DISTRIBUTION build (arm64, self-contained).
+# See RELEASING.md. Build with:  .venv/bin/pyinstaller --noconfirm LocalFlow.spec
+# Output: dist/LocalFlow.app  (no repo or .venv required at runtime).
+
+from PyInstaller.utils.hooks import collect_all, collect_submodules
+
+datas, binaries, hiddenimports = [], [], []
+
+# Heavy / native-dependency packages — pull their dylibs, data files, and
+# submodules so the frozen app needs nothing from the build machine.
+for pkg in (
+    "faster_whisper",
+    "ctranslate2",
+    "av",            # PyAV -> bundled ffmpeg dylibs
+    "onnxruntime",
+    "tokenizers",
+    "sounddevice",   # -> _sounddevice_data/portaudio
+    "numpy",
+    "huggingface_hub",
+):
+    d, b, h = collect_all(pkg)
+    datas += d
+    binaries += b
+    hiddenimports += h
+
+# hf_xet: native accelerator huggingface_hub loads at runtime (optional).
+try:
+    d, b, h = collect_all("hf_xet")
+    datas += d
+    binaries += b
+    hiddenimports += h
+except Exception:
+    pass
+
+# PyObjC frameworks the app touches, plus the whole flow package.
+hiddenimports += [
+    "objc", "AppKit", "Foundation", "Quartz",
+    "AVFoundation", "CoreMedia", "CoreAudio",
+]
+hiddenimports += collect_submodules("flow")
+
+a = Analysis(
+    ["main.py"],
+    pathex=[],
+    binaries=binaries,
+    datas=datas,
+    hiddenimports=hiddenimports,
+    hookspath=[],
+    runtime_hooks=[],
+    excludes=["pytest", "tkinter"],
+    noarchive=False,
+)
+pyz = PYZ(a.pure)
+
+exe = EXE(
+    pyz,
+    a.scripts,
+    [],
+    exclude_binaries=True,
+    name="LocalFlow",
+    debug=False,
+    bootloader_ignore_signals=False,
+    strip=False,
+    upx=False,
+    console=False,
+    target_arch="arm64",
+)
+
+coll = COLLECT(
+    exe,
+    a.binaries,
+    a.datas,
+    strip=False,
+    upx=False,
+    name="LocalFlow",
+)
+
+app = BUNDLE(
+    coll,
+    name="LocalFlow.app",
+    icon="assets/AppIcon.icns",
+    bundle_identifier="dev.local-flow.app",
+    version="0.1.0",
+    info_plist={
+        "CFBundleName": "LocalFlow",
+        "CFBundleDisplayName": "LocalFlow",
+        "CFBundleShortVersionString": "0.1.0",
+        "CFBundleVersion": "0.1.0",
+        "LSMinimumSystemVersion": "12.0",
+        "NSHighResolutionCapable": True,
+        "NSMicrophoneUsageDescription":
+            "LocalFlow records your voice while the hotkey is held, to "
+            "transcribe it locally on this machine.",
+    },
+)
