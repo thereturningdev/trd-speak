@@ -1,6 +1,8 @@
 """faster-whisper engine (CTranslate2, CPU)."""
 
 import logging
+import os
+import sys
 
 import numpy as np
 
@@ -12,6 +14,22 @@ _MIN_SECONDS = 0.25
 # Quiet the noisy download/progress loggers; warnings and errors still show.
 for _name in ("faster_whisper", "huggingface_hub", "ctranslate2"):
     logging.getLogger(_name).setLevel(logging.WARNING)
+
+
+def _embedded_model_dir(model_name: str) -> str | None:
+    """Path to the model bundled inside a frozen app, or None.
+
+    The release build embeds the default model under
+    ``<bundle>/models/faster-whisper-<name>`` (see LocalFlow.spec), so the app
+    transcribes offline with no Hugging Face download. In a source checkout
+    ``sys._MEIPASS`` is unset, so this returns None and faster-whisper resolves
+    ``model_name`` from the Hugging Face cache/hub as before.
+    """
+    base = getattr(sys, "_MEIPASS", None)
+    if base is None:
+        return None
+    path = os.path.join(base, "models", f"faster-whisper-{model_name}")
+    return path if os.path.isdir(path) else None
 
 
 class WhisperTranscriber(Transcriber):
@@ -39,8 +57,9 @@ class WhisperTranscriber(Transcriber):
             return
         from faster_whisper import WhisperModel
 
+        source = _embedded_model_dir(self.model_name) or self.model_name
         self._model = WhisperModel(
-            self.model_name, device="cpu", compute_type=self.compute_type
+            source, device="cpu", compute_type=self.compute_type
         )
 
     def transcribe(self, audio: np.ndarray) -> str:

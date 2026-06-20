@@ -57,6 +57,22 @@ def _selftest() -> int:
     return 0
 
 
+def _selftest_model() -> int:
+    """Load the (embedded) default model and run one transcription, to prove a
+    frozen bundle works offline. Run with HF offline env + an empty HF cache so
+    a download is impossible — success means the model came from the bundle."""
+    import numpy as np
+
+    from flow.config import Config
+    from flow.engines import make_transcriber
+
+    transcriber = make_transcriber("whisper", Config())
+    transcriber.load()
+    out = transcriber.transcribe(np.zeros(16000, dtype=np.float32))
+    print(f"model OK (transcript={out!r})")
+    return 0
+
+
 def main() -> None:
     parser = argparse.ArgumentParser(
         description="local-flow: local push-to-talk dictation for macOS"
@@ -68,10 +84,16 @@ def main() -> None:
         "--selftest", action="store_true",
         help="import all dependencies and exit (release build smoke test)",
     )
+    parser.add_argument(
+        "--selftest-model", action="store_true",
+        help="load the embedded model and transcribe once, then exit",
+    )
     args = parser.parse_args()
 
     if args.selftest:
         sys.exit(_selftest())
+    if args.selftest_model:
+        sys.exit(_selftest_model())
 
     # Single-instance guard: System Settings' own quit-and-reopen races our
     # self-restart, and two instances must collapse to one cleanly.
@@ -87,4 +109,11 @@ def main() -> None:
 
 
 if __name__ == "__main__":
+    # PyInstaller-frozen apps MUST call this before any multiprocessing use:
+    # ctranslate2/onnxruntime spawn a resource-tracker child that re-launches
+    # this executable, and without freeze_support the child falls through to
+    # argparse and errors. No-op in the parent and in a source run.
+    import multiprocessing
+
+    multiprocessing.freeze_support()
     main()

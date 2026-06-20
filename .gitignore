@@ -7,3 +7,4 @@ LocalFlow.app/
 config.toml
 build/
 dist/
+models/

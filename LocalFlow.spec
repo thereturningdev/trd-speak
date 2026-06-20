@@ -3,9 +3,21 @@
 # See RELEASING.md. Build with:  .venv/bin/pyinstaller --noconfirm LocalFlow.spec
 # Output: dist/LocalFlow.app  (no repo or .venv required at runtime).
 
+import os
+
 from PyInstaller.utils.hooks import collect_all, collect_submodules
 
 datas, binaries, hiddenimports = [], [], []
+
+# Embedded default model (base.en) so the app transcribes offline, no download.
+# Populate with: .venv/bin/python scripts/fetch_model.py  (before building).
+_MODEL_DIR = "models/faster-whisper-base.en"
+if os.path.isdir(_MODEL_DIR):
+    datas += [(_MODEL_DIR, _MODEL_DIR)]
+else:
+    raise SystemExit(
+        f"Missing {_MODEL_DIR}. Run: .venv/bin/python scripts/fetch_model.py"
+    )
 
 # Heavy / native-dependency packages — pull their dylibs, data files, and
 # submodules so the frozen app needs nothing from the build machine.
