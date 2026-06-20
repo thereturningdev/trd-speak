@@ -97,9 +97,13 @@ app = BUNDLE(
     info_plist={
         "CFBundleName": "LocalFlow",
         "CFBundleDisplayName": "LocalFlow",
-        "CFBundleShortVersionString": "0.1.0",
-        "CFBundleVersion": "0.1.0",
+        "CFBundleShortVersionString": "0.1.0",  # marketing version
+        "CFBundleVersion": "1",                 # build number — bump every build, must increase
         "LSMinimumSystemVersion": "12.0",
+        "LSApplicationCategoryType": "public.app-category.productivity",
+        # Dock app, NOT a menu-bar agent: run() sets NSApplicationActivationPolicyRegular
+        # (flow/menubar.py). LSUIElement must stay false or it fights that policy.
+        "LSUIElement": False,
         "NSHighResolutionCapable": True,
         "NSMicrophoneUsageDescription":
             "LocalFlow records your voice while the hotkey is held, to "

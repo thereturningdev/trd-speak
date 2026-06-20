@@ -1,0 +1,30 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<!--
+  Hardened Runtime entitlements for the DISTRIBUTION build (notarization, #10).
+  Applied at signing time (#11) via:
+      codesign --options runtime --entitlements entitlements.plist ...
+
+  These are the relaxations an embedded CPython needs. ctranslate2, onnxruntime,
+  PyAV/ffmpeg and PortAudio are dlopen'd at runtime as separately built dylibs,
+  which the Hardened Runtime blocks by default. Keep this set minimal — if
+  notarization + launch on a clean Mac (#12) succeed without one of these, drop
+  it. Do NOT add the Microphone/Input-Monitoring/Accessibility grants here: those
+  are TCC grants, not entitlements.
+-->
+<plist version="1.0">
+<dict>
+    <!-- Python and some native deps allocate writable+executable memory. -->
+    <key>com.apple.security.cs.allow-unsigned-executable-memory</key>
+    <true/>
+
+    <!-- Required when any embedded library maps JIT (MAP_JIT) pages. -->
+    <key>com.apple.security.cs.allow-jit</key>
+    <true/>
+
+    <!-- CPython dlopen's third-party .so/.dylib not signed by our Team ID
+         (ctranslate2, onnxruntime, ffmpeg, PortAudio, ...). -->
+    <key>com.apple.security.cs.disable-library-validation</key>
+    <true/>
+</dict>
+</plist>
