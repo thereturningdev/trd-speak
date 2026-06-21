@@ -85,8 +85,22 @@ def _is_dev_build() -> bool:
 
 
 def _about_text(version: str, is_dev: bool) -> str:
-    """Menu/notification label, e.g. 'TRD Speak 0.1.2 (dev)'."""
+    """Menu row label, e.g. 'TRD Speak 0.1.2 (dev)'."""
     return f"TRD Speak {version}" + (" (dev)" if is_dev else "")
+
+
+def _make_version_item(version: str, is_dev: bool):
+    """An always-visible, DISABLED menu row revealing the running version (and
+    dev flavor). Disabled and action-less so it reads as an info row, not a
+    button: the version is visible the moment the menu opens — no click, no
+    notification, no modal. (A clickable row firing a notification was tried
+    first and failed: macOS does not reliably display osascript banners, so
+    nothing appeared on click. See the module docstring's no-modal rule.)"""
+    item = AppKit.NSMenuItem.alloc().initWithTitle_action_keyEquivalent_(
+        _about_text(version, is_dev), None, ""
+    )
+    item.setEnabled_(False)
+    return item
 
 
 def _open_pane(anchor: str) -> None:
@@ -238,11 +252,6 @@ class _Delegate(NSObject):
 
     def openLog_(self, _sender) -> None:
         subprocess.Popen(["open", LOG_PATH])
-
-    def aboutApp_(self, _sender) -> None:
-        """"About TRD Speak…" row clicked: show the running version (and dev
-        flavor) as a notification — never a modal (see module docstring)."""
-        _notify(_about_text(__version__, _is_dev_build()))
 
     def grantPerm_(self, sender) -> None:
         """Current-step row clicked: fire ONLY that permission's prompt.
@@ -484,11 +493,9 @@ class MenuBar:
         self._engine_separator = AppKit.NSMenuItem.separatorItem()
         menu.addItem_(self._engine_separator)
 
-        about_item = AppKit.NSMenuItem.alloc().initWithTitle_action_keyEquivalent_(
-            "About TRD Speak…", "aboutApp:", ""
-        )
-        about_item.setTarget_(delegate)
-        menu.addItem_(about_item)
+        # Always-visible disabled row revealing the running version (and dev
+        # flavor) — visible on menu open, no click/notification needed (#18).
+        menu.addItem_(_make_version_item(__version__, _is_dev_build()))
 
         log_item = AppKit.NSMenuItem.alloc().initWithTitle_action_keyEquivalent_(
             "Open Log", "openLog:", ""
