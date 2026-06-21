@@ -51,12 +51,14 @@ dependencies, and downloads the speech model (~500 MB — this is the slow
 part, one time only). When it finishes:
 
 ```sh
-./make_app.sh
-open TRDSpeak.app
+./make_dev_app.sh
+open "dist/TRD Speak Dev.app"
 ```
 
-> **Don't move the folder afterwards.** The app remembers where it was
-> built; if you relocate the folder, run `./make_app.sh` again.
+> The build is self-contained, so its location does not matter. Drag
+> **TRD Speak Dev.app** from `dist/` (or open `dist/TRD Speak Dev.dmg`) to
+> /Applications to install it. Each rebuild is ad-hoc signed afresh, so macOS
+> may ask you to re-grant permissions after you install a new build.
 
 ## 3. Grant the three permissions
 

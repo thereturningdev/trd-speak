@@ -76,7 +76,7 @@ def _notify(message: str) -> None:
 
 
 def _is_dev_build() -> bool:
-    """Dev bundles (make_app.sh) carry a .dev bundle id; the notarized
+    """Dev bundles (make_dev_app.sh) carry a .dev bundle id; the notarized
     distribution build (TRDSpeak.spec) is com.thereturningdev.speak. A
     non-bundled ./run.sh launch has no .dev id and reads as a distribution
     build — an accepted limitation."""
@@ -200,22 +200,31 @@ def _status_line(snap: dict) -> str:
     return "Permissions — " + ", ".join(bits)
 
 
+def _bundle_path():
+    """The running .app bundle, or None in ./run.sh dev mode (no bundle).
+
+    A frozen build's executable lives at ``<App>.app/Contents/MacOS/<exe>``, so
+    the bundle is three levels up. (This used to read the TRDSPEAK_BUNDLE env
+    var, which only the old make_app.sh launcher ever set; resolving from the
+    frozen executable works for every shipped/dev build with no env var.)
+    """
+    if getattr(sys, "frozen", False):
+        return Path(sys.executable).resolve().parents[2]
+    return None
+
+
 def _set_dock_icon(nsapp) -> None:
-    """Use the bundle's mic icon in the Dock (also works in ./run.sh mode)."""
-    candidates = []
-    bundle = os.environ.get("TRDSPEAK_BUNDLE")
-    if bundle:
-        candidates.append(Path(bundle))
-    candidates.append(
-        Path(__file__).resolve().parent.parent / "dist" / "TRD Speak Dev.app"
-    )
-    for candidate in candidates:
-        icns = candidate / "Contents" / "Resources" / "AppIcon.icns"
-        if icns.is_file():
-            image = AppKit.NSImage.alloc().initWithContentsOfFile_(str(icns))
-            if image:
-                nsapp.setApplicationIconImage_(image)
-            return
+    """Set the Dock icon from the running .app's AppIcon.icns. No-op in
+    ./run.sh dev mode (no bundle); a frozen build also gets its icon from
+    Info.plist, so this just makes it explicit."""
+    bundle = _bundle_path()
+    if bundle is None:
+        return
+    icns = bundle / "Contents" / "Resources" / "AppIcon.icns"
+    if icns.is_file():
+        image = AppKit.NSImage.alloc().initWithContentsOfFile_(str(icns))
+        if image:
+            nsapp.setApplicationIconImage_(image)
 
 
 def _relaunch() -> None:
@@ -224,8 +233,8 @@ def _relaunch() -> None:
     Never called automatically — only from the explicit "Restart TRD Speak
     now" menu row.
     """
-    bundle = os.environ.get("TRDSPEAK_BUNDLE")
-    if bundle:
+    bundle = _bundle_path()
+    if bundle is not None:
         print("Restarting TRD Speak…")
         # The helper must wait for THIS process to fully die before reopening:
         # teardown can exceed any fixed sleep (the whisper model is loaded by

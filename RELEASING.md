@@ -12,12 +12,13 @@ Release process for the **0.1** milestone. Tracked in issues #5–#17.
 
 ## Two builds
 
-### Dev build — `./make_app.sh`
+### Dev build — `./make_dev_app.sh`
 
-- For local testing on the developer's own machine only.
-- Ad-hoc signed (`codesign --sign -`).
-- Repo-linked: the launcher `chdir`s to the repo and runs the repo `.venv` via `PYTHONEXECUTABLE`.
-- Not distributable (depends on the repo and `.venv` existing at a fixed path).
+- For local testing on the developer's own machine.
+- Self-contained PyInstaller build (same engine as the distribution build), output to `dist/TRD Speak Dev.app` and `dist/TRD Speak Dev.dmg`; no repo or `.venv` required at runtime.
+- Dev identity `com.thereturningdev.speak.dev` / "TRD Speak Dev", so it installs alongside the stable build with its own permissions.
+- Version is the latest published GitHub release with `+dev` appended, derived automatically (e.g. `0.1.3+dev`) — never hand-typed.
+- Ad-hoc signed (not notarized). The script self-verifies (`--version`/`--selftest`) but does not install or configure the app — the developer installs and tests it.
 
 ### Distribution build — `./make_release.sh`
 

@@ -22,8 +22,8 @@ walks through install, permissions, and first dictation step by step.
 git clone <repo-url> trd-speak
 cd trd-speak
 ./setup.sh           # venv, dependencies, model download
-./make_app.sh        # builds TRDSpeak.app
-open TRDSpeak.app
+./make_dev_app.sh    # builds dist/TRD Speak Dev.app (+ .dmg)
+open "dist/TRD Speak Dev.app"
 ```
 
 That's it. TRD Speak shows up in the **Dock** and the **menu bar**. On a
@@ -108,9 +108,9 @@ its own. And you can revoke a permission at any time; the icon goes back to
 - Stop it from the menu ("Quit TRD Speak") or with `./stop.sh`.
 - To start dictation automatically at login, add TRD Speak in
   **System Settings -> General -> Login Items**.
-- The bundle bakes in this folder's absolute path and is ad-hoc signed:
-  re-run `./make_app.sh` if you move the folder, and expect macOS to ask you
-  to re-grant permissions after a rebuild.
+- The dev build is self-contained and ad-hoc signed; it does not depend on
+  this folder's location. Each rebuild is signed afresh, so expect macOS to
+  ask you to re-grant permissions after you install a new build.
 
 ### Terminal alternative (dev)
 
@@ -189,8 +189,8 @@ focused app and rarely collide with system shortcuts.
 - **The icon never leaves ⚠️ even though System Settings looks right** —
   toggle the TRD Speak entry off and on in the relevant pane, or remove it
   (the "–" button) and click the menu row again. Rebuilding with
-  `./make_app.sh` changes the ad-hoc signing identity, so after a rebuild
-  macOS may require you to re-grant.
+  `./make_dev_app.sh` changes the ad-hoc signing identity, so after installing
+  a rebuild macOS may require you to re-grant.
 - **Recording works (🔴 shows) but no text is ever inserted** — the
   **Accessibility** permission is missing, so the synthetic Cmd+V is
   silently dropped by macOS. The ⚠️ menu walks you to the right step; with

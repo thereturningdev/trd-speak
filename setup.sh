@@ -75,7 +75,7 @@ cat <<'EOF'
 
 Setup complete.
 
-Run ./make_app.sh, then open TRDSpeak.app. On first launch the app stays
+Run ./make_dev_app.sh, then open "dist/TRD Speak Dev.app". On first launch the app stays
 quiet — just a ⚠️ menu bar icon and one notification. Click the ⚠️ icon:
 its menu walks you through the three permissions one step at a time
 (1 Microphone, 2 Accessibility, 3 Input Monitoring). On the last step,
