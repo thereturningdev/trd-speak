@@ -1,5 +1,5 @@
 #!/bin/bash
-# Build TRDSpeak.app — a minimal app bundle so macOS permissions (Microphone,
+# Build "dist/TRD Speak Dev.app" — a minimal app bundle so macOS permissions (Microphone,
 # Input Monitoring, Accessibility) attach to "TRD Speak Dev" instead of your
 # terminal app. Requires the Xcode Command Line Tools (xcode-select --install).
 #
@@ -24,7 +24,9 @@ set -euo pipefail
 
 cd "$(dirname "$0")"
 REPO="$(pwd)"
-APP="$REPO/TRDSpeak.app"
+# Dev bundle lives in dist/ with a distinct name so it is never confused with
+# the notarized distribution build (dist/TRDSpeak.app from make_release.sh).
+APP="$REPO/dist/TRD Speak Dev.app"
 
 if [ ! -x .venv/bin/python ]; then
     echo "Error: .venv missing — run ./setup.sh first." >&2
@@ -156,7 +158,7 @@ int main(void) {
     posix_spawn_file_actions_adddup2(&fa, STDOUT_FILENO, STDERR_FILENO);
 
     /* Lets the Python side relaunch the bundle after permissions change. */
-    setenv("TRDSPEAK_BUNDLE", REPO "/TRDSpeak.app", 1);
+    setenv("TRDSPEAK_BUNDLE", REPO "/dist/TRD Speak Dev.app", 1);
 
     /* The spawned binary is the bundle's copy of the CPython Mach-O, so
      * LaunchServices identifies the GUI process as TRD Speak (Dock label,
@@ -166,7 +168,7 @@ int main(void) {
     setenv("PYTHONEXECUTABLE", REPO "/.venv/bin/python", 1);
 
     /* -u: unbuffered stdout so the log file updates live */
-    char *argv[] = {REPO "/TRDSpeak.app/Contents/MacOS/TRDSpeak-python",
+    char *argv[] = {REPO "/dist/TRD Speak Dev.app/Contents/MacOS/TRDSpeak-python",
                     "-u", REPO "/main.py", NULL};
     int err = posix_spawn(&child, argv[0], &fa, NULL, argv, environ);
     if (err != 0) {

@@ -192,7 +192,9 @@ def _set_dock_icon(nsapp) -> None:
     bundle = os.environ.get("TRDSPEAK_BUNDLE")
     if bundle:
         candidates.append(Path(bundle))
-    candidates.append(Path(__file__).resolve().parent.parent / "TRDSpeak.app")
+    candidates.append(
+        Path(__file__).resolve().parent.parent / "dist" / "TRD Speak Dev.app"
+    )
     for candidate in candidates:
         icns = candidate / "Contents" / "Resources" / "AppIcon.icns"
         if icns.is_file():
