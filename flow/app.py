@@ -40,8 +40,9 @@ class App:
             on_activate=self._on_activate,
             on_deactivate=self._on_deactivate,
         )
-        # Diagnostic logging for the re-paste tap, dev builds only (it logs
-        # keycodes pressed while a modifier is held, so never in production).
+        # Diagnostic logging for the re-paste tap, dev builds only: traces when
+        # the combo fires and re-arms so the real macOS tap can be verified on
+        # hardware (the dev log), never in production.
         self._repaste_debug = "repaste" if paths.IS_DEV else None
         # Second, independent listener (its own tap): a clean tap of this combo
         # re-pastes the most recent dictation into the focused window.

@@ -359,19 +359,6 @@ class HotkeyListener:
             )
             token = self._keycode_to_token.get(keycode)
             if token is None:
-                # Diagnostic: a key we don't recognize, pressed while a modifier
-                # is held — this is exactly how a mis-keycoded chord character
-                # would slip past (e.g. if 'p' were not keycode 35 here).
-                if (
-                    self._debug
-                    and event_type == Quartz.kCGEventKeyDown
-                    and self._held
-                ):
-                    self._dbg(
-                        f"keyDown UNMAPPED keycode={keycode} while held="
-                        f"{sorted(self._held)} flags_mods="
-                        f"{sorted(modifier_tokens_from_flags(Quartz.CGEventGetFlags(event)))}"
-                    )
                 # A non-combo key. For a modifier-only tap combo, an ordinary
                 # key pressed while the combo is held contaminates the hold
                 # (e.g. the "4" of Cmd+Ctrl+Shift+4), so the trigger will not
@@ -404,11 +391,6 @@ class HotkeyListener:
                 self._flags_changed(token, keycode, flags)
                 if self._keydown_fire:
                     self._rearm_on_modifier_release(flags)
-                self._dbg(
-                    f"flagsChanged token={token!r} keycode={keycode} "
-                    f"mods_now={sorted(modifier_tokens_from_flags(flags))} "
-                    f"held={sorted(self._held)}"
-                )
         except Exception as exc:
             print(f"Hotkey tap callback error: {exc}")
         return event
