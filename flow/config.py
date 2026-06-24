@@ -17,6 +17,7 @@ class Config:
     # (10 successful re-pastes), whereas the char-chord keyDown path used by
     # e.g. cmd+ctrl+p never fired in practice. Evidence over theory.
     repaste_keys: list[str] = field(default_factory=lambda: ["cmd", "ctrl"])
+    correct_keys: list[str] = field(default_factory=lambda: ["cmd", "alt"])
     max_seconds: int = 180
     sample_rate: int = 16000
     compute_type: str = "int8"
@@ -76,6 +77,12 @@ def load_config(path: str | None = None) -> Config:
         raise ValueError("[repaste] must be a TOML table")
     if "keys" in repaste:
         cfg.repaste_keys = _validate_keys(repaste["keys"], "repaste.keys")
+
+    correct = data.get("correct", {})
+    if not isinstance(correct, dict):
+        raise ValueError("[correct] must be a TOML table")
+    if "keys" in correct:
+        cfg.correct_keys = _validate_keys(correct["keys"], "correct.keys")
 
     whisper = data.get("whisper", {})
     if not isinstance(whisper, dict):
