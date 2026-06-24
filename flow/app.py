@@ -339,6 +339,7 @@ class App:
         """
         self.hotkey.stop()
         self.repaste_hotkey.stop()
+        self.correction_hotkey.stop()
 
     def resume_hotkeys(self) -> None:
         """Restart both taps with the unchanged config keys (Cancel / close
@@ -347,6 +348,7 @@ class App:
         """
         self.hotkey.start()
         self.repaste_hotkey.start()
+        self.correction_hotkey.start()
 
     def set_hotkeys(self, dictate_keys: list[str], repaste_keys: list[str]) -> None:
         """Apply new shortcuts immediately (Save): stop both taps, rebuild both
@@ -397,6 +399,13 @@ class App:
         else:
             repaste_combo = "+".join(self.config.repaste_keys)
             print(f"Tap {repaste_combo} to re-paste the last dictation.")
+        try:
+            self.correction_hotkey.start()
+        except Exception as exc:
+            print(f"Could not start the correction hotkey listener: {exc}")
+        else:
+            correct_combo = "+".join(self.config.correct_keys)
+            print(f"Tap {correct_combo} to correct & learn from the last dictation.")
         combo = "+".join(self.config.keys)
         print(f"Ready — hold {combo} to dictate.")
         if self.on_engine is not None:
@@ -407,6 +416,7 @@ class App:
         """Stop the listeners and any in-flight recording."""
         self.hotkey.stop()
         self.repaste_hotkey.stop()
+        self.correction_hotkey.stop()
         try:
             self.recorder.stop()
         except Exception:

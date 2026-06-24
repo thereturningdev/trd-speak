@@ -32,3 +32,20 @@ def test_correction_is_learned_and_applied_next_time(monkeypatch, tmp_path):
     monkeypatch.setattr(app_mod, "paste_text", lambda s, **k: pasted.append(s))
     app._process()
     assert pasted == ["meet Diotalevi "]
+
+
+def test_correction_hotkey_participates_in_suspend_resume(monkeypatch, tmp_path):
+    import flow.app as app_mod
+    from flow.config import Config
+    monkeypatch.setattr(app_mod.paths, "DICTATIONS_PATH", tmp_path / "d.json")
+    monkeypatch.setattr(app_mod.paths, "DICTIONARY_PATH", tmp_path / "dict.json")
+    calls = []
+    monkeypatch.setattr(app_mod.HotkeyListener, "start", lambda self: calls.append((id(self), "start")))
+    monkeypatch.setattr(app_mod.HotkeyListener, "stop", lambda self: calls.append((id(self), "stop")))
+    monkeypatch.setattr(app_mod, "make_transcriber", lambda *a, **k: object())
+    app = app_mod.App(Config())
+    cid = id(app.correction_hotkey)
+    app.suspend_hotkeys()
+    assert (cid, "stop") in calls
+    app.resume_hotkeys()
+    assert (cid, "start") in calls
