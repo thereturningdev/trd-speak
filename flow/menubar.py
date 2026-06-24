@@ -47,7 +47,7 @@ from flow.app import App
 from flow.config import Config
 from flow.correction_window import open_correction_window
 from flow.corrector import TextCorrector
-from flow.dictionary import save_dictionary
+from flow.dictionary import Dictionary, save_dictionary
 from flow.engines import ENGINE_NAMES, ENGINES
 
 LOG_PATH = paths.LOG_PATH
@@ -358,31 +358,53 @@ class _Delegate(NSObject):
         open_correction_window(logic)
 
     def deleteLearnedRule_(self, sender) -> None:
-        """Learned-words row clicked: delete that single rule, save, rebuild."""
+        """Learned-words row clicked: delete that single rule, save, rebuild.
+
+        SAVE FIRST: persist a candidate dictionary, then commit live state only
+        if the write succeeded — a failed save must not leave memory and disk
+        diverged (deleted rules reappearing on restart)."""
         logic = getattr(self, "logic", None)
         menubar = getattr(self, "menubar", None)
         if logic is None or menubar is None:
             return
         from_word = str(sender.representedObject())
-        logic.dictionary.replacements = [
+        new_reps = [
             r for r in logic.dictionary.replacements
             if not (r.learned and r.from_ == from_word)
         ]
-        save_dictionary(logic.dictionary, paths.DICTIONARY_PATH)
-        logic.corrector = TextCorrector(logic.dictionary.replacements)
+        candidate = Dictionary(
+            vocabulary=logic.dictionary.vocabulary, replacements=new_reps
+        )
+        try:
+            save_dictionary(candidate, paths.DICTIONARY_PATH)
+        except Exception as exc:
+            print(f"[menubar] save_dictionary failed: {exc}")
+            return  # do NOT mutate live state or corrector on failure
+        logic.dictionary.replacements = new_reps
+        logic.corrector = TextCorrector(new_reps)
         menubar._rebuild_learned_submenu()
 
     def resetLearnedWords_(self, _sender) -> None:
-        """Reset Learned Words row clicked: remove all learned rules, save, rebuild."""
+        """Reset Learned Words row clicked: remove all learned rules, save, rebuild.
+
+        SAVE FIRST: persist a candidate dictionary, then commit live state only
+        if the write succeeded — a failed save must not leave memory and disk
+        diverged."""
         logic = getattr(self, "logic", None)
         menubar = getattr(self, "menubar", None)
         if logic is None or menubar is None:
             return
-        logic.dictionary.replacements = [
-            r for r in logic.dictionary.replacements if not r.learned
-        ]
-        save_dictionary(logic.dictionary, paths.DICTIONARY_PATH)
-        logic.corrector = TextCorrector(logic.dictionary.replacements)
+        new_reps = [r for r in logic.dictionary.replacements if not r.learned]
+        candidate = Dictionary(
+            vocabulary=logic.dictionary.vocabulary, replacements=new_reps
+        )
+        try:
+            save_dictionary(candidate, paths.DICTIONARY_PATH)
+        except Exception as exc:
+            print(f"[menubar] save_dictionary failed: {exc}")
+            return  # do NOT mutate live state or corrector on failure
+        logic.dictionary.replacements = new_reps
+        logic.corrector = TextCorrector(new_reps)
         menubar._rebuild_learned_submenu()
 
     def openDictionaryFile_(self, _sender) -> None:
