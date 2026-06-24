@@ -8,14 +8,14 @@ file takes precedence over config.toml (per-combo). A single JSON file at
 """
 
 import json
-import os
 from pathlib import Path
 
+from flow import paths
 from flow.config import validate_keys
 
-_DEFAULT_PATH = Path(
-    os.path.expanduser("~/Library/Application Support/TRD Speak/hotkeys.json")
-)
+# Per-build (dev vs production) via flow.paths so the dev build does not read or
+# overwrite the production build's saved shortcuts.
+_DEFAULT_PATH = paths.HOTKEYS_PATH
 
 
 def load(path: Path = _DEFAULT_PATH) -> dict | None:

@@ -5,12 +5,13 @@ into config.toml (which the user hand-edits with comments). At startup this
 file takes precedence over config.toml.
 """
 
-import os
 from pathlib import Path
 
-_DEFAULT_PATH = Path(
-    os.path.expanduser("~/Library/Application Support/TRD Speak/engine")
-)
+from flow import paths
+
+# Per-build (dev vs production) via flow.paths so each build keeps its own
+# engine choice.
+_DEFAULT_PATH = paths.ENGINE_PATH
 
 
 def load_engine(path: Path = _DEFAULT_PATH) -> str | None:

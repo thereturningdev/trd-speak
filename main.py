@@ -3,17 +3,17 @@
 import argparse
 import fcntl
 import os
-import pathlib
 import subprocess
 import sys
 
+from flow import paths
+
 # User-writable support dir. The lock MUST NOT live inside the app bundle: a
 # signed/notarized .app is read-only, so writing the lock next to __file__ (as a
-# source checkout does) fails once bundled. This path works for both modes.
-_APP_SUPPORT = pathlib.Path(
-    os.path.expanduser("~/Library/Application Support/TRD Speak")
-)
-_LOCK_PATH = _APP_SUPPORT / ".trd-speak.lock"
+# source checkout does) fails once bundled. flow.paths makes this per-build
+# (dev vs production), so the two builds never share a lock or step on config.
+_APP_SUPPORT = paths.APP_SUPPORT_DIR
+_LOCK_PATH = paths.LOCK_PATH
 _lock_file = None  # module-level: keeps the lock fd alive for the process lifetime
 
 
@@ -134,7 +134,7 @@ def _redirect_frozen_logs() -> None:
     """
     if not getattr(sys, "frozen", False):
         return
-    log_path = os.path.expanduser("~/Library/Logs/trd-speak.log")
+    log_path = paths.LOG_PATH
     try:
         os.makedirs(os.path.dirname(log_path), exist_ok=True)
         f = open(log_path, "a", buffering=1)

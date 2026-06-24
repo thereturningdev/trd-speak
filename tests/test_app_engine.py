@@ -10,6 +10,13 @@ from flow.config import Config
 from flow.engines import EngineUnavailable, Transcriber
 
 
+@pytest.fixture(autouse=True)
+def _isolate_history(tmp_path, monkeypatch):
+    """Keep dictations out of the user's real ~/Library/Application Support
+    store: every App built here writes to a throwaway per-test file."""
+    monkeypatch.setattr(app_mod.paths, "DICTATIONS_PATH", tmp_path / "dictations.json")
+
+
 def _wait_until(predicate, timeout=5.0):
     """Spin until predicate() is true or the timeout elapses."""
     deadline = time.monotonic() + timeout

@@ -181,14 +181,35 @@ class HotkeyListener:
         on_activate: Callable[[], None] | None = None,
         on_deactivate: Callable[[], None] | None = None,
         on_trigger: Callable[[], None] | None = None,
+        debug_label: str | None = None,
     ) -> None:
         if not keys:
             raise ValueError("Hotkey keys list must not be empty")
+        # Diagnostic logging label (e.g. "repaste"); None disables all logging.
+        # Gated by the caller to dev builds only — never the production build —
+        # because it logs keycodes pressed while a modifier is held.
+        self._debug = debug_label
         self._targets: frozenset[str] = frozenset(_parse_key_name(k) for k in keys)
         self._mode = "tap" if on_trigger is not None else "hold"
         self._on_activate = on_activate or (lambda: None)
         self._on_deactivate = on_deactivate or (lambda: None)
         self._on_trigger = on_trigger or (lambda: None)
+        # A tap combo that includes a non-modifier ("character") key fires on
+        # that key's keyDOWN — with the required modifiers verified from the
+        # event's absolute flags — NOT on its release. macOS withholds the
+        # character keyUp while Command is held (an AppKit dispatch quirk), so
+        # release-based detection leaves the character key "stuck" and the
+        # trigger then stops firing and false-fires on the bare modifier
+        # subset. Modifier-only tap combos have no character key to key off and
+        # keep clean-release detection (modifiers self-heal via flagsChanged).
+        self._target_mods = frozenset(t for t in self._targets if t in _MODIFIER_TOKENS)
+        self._target_keys = frozenset(self._targets - self._target_mods)
+        self._keydown_fire = self._mode == "tap" and bool(self._target_keys)
+        # keydown-fire state: which target character keys are physically down,
+        # and whether this hold has already fired (re-armed when the modifier
+        # flags clear — see _rearm_on_modifier_release).
+        self._keys_down: set[str] = set()
+        self._fired_this_hold = False
         # tap mode: set when a non-combo key is pressed during the hold; a
         # contaminated hold does not fire on_trigger when it is released.
         self._contaminated = False
@@ -338,54 +359,175 @@ class HotkeyListener:
             )
             token = self._keycode_to_token.get(keycode)
             if token is None:
-                # In tap mode, any ordinary key pressed while the combo is held
-                # contaminates the hold (e.g. the "4" of Cmd+Ctrl+Shift+4), so
-                # the trigger will not fire on release. Other modifiers arrive
-                # as flagsChanged and are intentionally ignored here.
-                if self._mode == "tap" and event_type == Quartz.kCGEventKeyDown:
+                # Diagnostic: a key we don't recognize, pressed while a modifier
+                # is held — this is exactly how a mis-keycoded chord character
+                # would slip past (e.g. if 'p' were not keycode 35 here).
+                if (
+                    self._debug
+                    and event_type == Quartz.kCGEventKeyDown
+                    and self._held
+                ):
+                    self._dbg(
+                        f"keyDown UNMAPPED keycode={keycode} while held="
+                        f"{sorted(self._held)} flags_mods="
+                        f"{sorted(modifier_tokens_from_flags(Quartz.CGEventGetFlags(event)))}"
+                    )
+                # A non-combo key. For a modifier-only tap combo, an ordinary
+                # key pressed while the combo is held contaminates the hold
+                # (e.g. the "4" of Cmd+Ctrl+Shift+4), so the trigger will not
+                # fire on release. A keydown-fire combo has already fired on its
+                # own character key, so stray keys are irrelevant to it. Other
+                # modifiers arrive as flagsChanged and are ignored here.
+                if (
+                    self._mode == "tap"
+                    and not self._keydown_fire
+                    and event_type == Quartz.kCGEventKeyDown
+                ):
                     with self._cond:
                         if self._active:
                             self._contaminated = True
+                return event
+            if self._keydown_fire and token in self._target_keys:
+                # The chord's character key: fire on its keyDown (modifiers read
+                # from this event's absolute flags), never on its keyUp.
+                if event_type == Quartz.kCGEventKeyDown:
+                    self._char_key_down(token, Quartz.CGEventGetFlags(event))
+                elif event_type == Quartz.kCGEventKeyUp:
+                    self._char_key_up(token)
                 return event
             if event_type == Quartz.kCGEventKeyDown:
                 self._press(token, keycode)
             elif event_type == Quartz.kCGEventKeyUp:
                 self._release(token, keycode)
             elif event_type == Quartz.kCGEventFlagsChanged:
-                self._flags_changed(token, keycode, Quartz.CGEventGetFlags(event))
+                flags = Quartz.CGEventGetFlags(event)
+                self._flags_changed(token, keycode, flags)
+                if self._keydown_fire:
+                    self._rearm_on_modifier_release(flags)
+                self._dbg(
+                    f"flagsChanged token={token!r} keycode={keycode} "
+                    f"mods_now={sorted(modifier_tokens_from_flags(flags))} "
+                    f"held={sorted(self._held)}"
+                )
         except Exception as exc:
             print(f"Hotkey tap callback error: {exc}")
         return event
 
-    def _flags_changed(self, token: str, keycode: int, flags: int) -> None:
-        """Resolve a modifier press-vs-release from a flagsChanged event.
+    def _dbg(self, msg: str) -> None:
+        """Diagnostic log (dev builds only — gated by self._debug being set)."""
+        if self._debug:
+            print(f"[{self._debug}] {msg}")
 
-        flagsChanged carries the keycode of the physical key that changed.
-        The token's flag mask says whether ANY variant is still down: if the
-        mask bit is clear, every variant of this modifier is up (this also
-        self-heals missed releases); if it is set, the keycode toggled —
-        down if we did not have it held, up if we did.
+    def _char_key_down(self, token: str, flags: int) -> None:
+        """Fire on the keyDown of a chord's character key.
+
+        Gated on the required modifiers all being present in THIS event's
+        absolute flags (read fresh, never accumulated). Fires at most once per
+        hold; auto-repeat keyDowns are absorbed by the `_fired_this_hold` guard.
+        The hold is re-armed by _rearm_on_modifier_release (modifier flags
+        clearing) or _char_key_up — never by waiting on this key's own keyUp,
+        which macOS withholds while Command is held.
         """
-        mask = _MODIFIER_MASKS[token]
-        if not (flags & mask):
-            # No variant of this modifier is down any more.
-            with self._cond:
-                stale = list(self._held.get(token, ()))
-            for kc in stale or [keycode]:
-                self._release(token, kc)
-            return
+        held_mods = modifier_tokens_from_flags(flags)
+        fire = False
         with self._cond:
-            held_now = keycode in self._held.get(token, ())
-        if held_now:
-            self._release(token, keycode)
-        else:
-            self._press(token, keycode)
+            self._keys_down.add(token)
+            already = self._fired_this_hold
+            if (
+                self._target_mods <= held_mods
+                and self._target_keys <= self._keys_down
+                and not self._fired_this_hold
+            ):
+                self._fired_this_hold = True
+                fire = True
+            keys_down = sorted(self._keys_down)
+        self._dbg(
+            f"char keyDown {token!r}: held_mods={sorted(held_mods)} "
+            f"need_mods={sorted(self._target_mods)} keys_down={keys_down} "
+            f"already_fired={already} -> FIRE={fire}"
+        )
+        if fire:
+            self._on_trigger()
+
+    def _char_key_up(self, token: str) -> None:
+        """A chord character key released (when its keyUp is actually delivered).
+
+        Drop it and re-arm. The keyUp may never arrive while Command is held,
+        so _rearm_on_modifier_release is the reliable re-arm path; this only
+        handles the case where the keyUp does come through.
+        """
+        with self._cond:
+            self._keys_down.discard(token)
+            self._fired_this_hold = False
+        self._dbg(f"char keyUp {token!r}")
+
+    def _rearm_on_modifier_release(self, flags: int) -> None:
+        """Re-arm the keydown-fire trigger once the required modifiers are no
+        longer all held. Reading absolute flags makes this self-healing and
+        independent of the withheld character keyUp; it also clears any
+        character key left 'stuck' by a missing keyUp so the bare modifier
+        subset can never phantom-trigger."""
+        if not (self._target_mods <= modifier_tokens_from_flags(flags)):
+            with self._cond:
+                self._fired_this_hold = False
+                self._keys_down.clear()
+            self._dbg(
+                f"re-armed (modifiers cleared: now "
+                f"{sorted(modifier_tokens_from_flags(flags))})"
+            )
+
+    def _flags_changed(self, token: str, keycode: int, flags: int) -> None:
+        """Resolve modifier presses/releases from a flagsChanged event.
+
+        flagsChanged carries the keycode of the physical key that changed AND
+        the ABSOLUTE modifier flags now in effect. Two steps:
+
+        1. If the carried token's mask bit is set, the keycode toggled — press
+           it if we did not have it held, release that variant if we did.
+        2. Reconcile EVERY held modifier against the absolute flags: release any
+           modifier token whose mask bit is now clear. This is what makes the
+           listener self-healing — a missed release, or TWO modifiers clearing
+           in a single event (a quick simultaneous release can surface as one
+           flagsChanged carrying just one keycode), can never leave a modifier
+           stuck in _held. A stuck modifier would wedge wait_all_released() and
+           silently drop the next trigger.
+        """
+        if flags & _MODIFIER_MASKS[token]:
+            with self._cond:
+                held_now = keycode in self._held.get(token, ())
+            if held_now:
+                self._release(token, keycode)
+            else:
+                self._press(token, keycode)
+        self._release_modifiers_absent_from(flags)
+
+    def _release_modifiers_absent_from(self, flags: int) -> None:
+        """Release every held modifier variant whose flag bit is clear in
+        `flags`. Non-modifier ("character") keys are tracked by keyDown/keyUp,
+        not by the flag bits, so they are deliberately left untouched here."""
+        with self._cond:
+            stale = [
+                (tok, kc)
+                for tok, variants in self._held.items()
+                if tok in _MODIFIER_MASKS and not (flags & _MODIFIER_MASKS[tok])
+                for kc in list(variants)
+            ]
+        for tok, kc in stale:
+            self._release(tok, kc)
 
     def _press(self, token: str, keycode: int) -> None:
         fire_activate = False
         with self._cond:
             self._held.setdefault(token, set()).add(keycode)
-            if not self._active and self._held.keys() == self._targets:
+            # keydown-fire combos trigger in _char_key_down, never here: their
+            # character key is routed away from _held, so this branch must not
+            # arm the release-based path (which would let the bare modifier
+            # subset phantom-fire). The explicit guard keeps that invariant.
+            if (
+                not self._active
+                and not self._keydown_fire
+                and self._held.keys() == self._targets
+            ):
                 self._active = True
                 if self._mode == "tap":
                     # A fresh full-hold starts clean; contamination is per-hold.

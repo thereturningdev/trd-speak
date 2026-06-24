@@ -12,6 +12,10 @@ class Config:
     model: str = "base.en"
     engine: str = "whisper"
     keys: list[str] = field(default_factory=lambda: ["ctrl", "shift"])
+    # Re-paste defaults to modifier-only cmd+ctrl. The live log (2026-06-24)
+    # proves this combo's clean-release path actually fires on a real keyboard
+    # (10 successful re-pastes), whereas the char-chord keyDown path used by
+    # e.g. cmd+ctrl+p never fired in practice. Evidence over theory.
     repaste_keys: list[str] = field(default_factory=lambda: ["cmd", "ctrl"])
     max_seconds: int = 180
     sample_rate: int = 16000

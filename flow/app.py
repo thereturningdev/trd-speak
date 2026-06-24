@@ -4,7 +4,7 @@ import threading
 import time
 from typing import Callable
 
-from flow import engine_state, permissions
+from flow import engine_state, paths, permissions
 from flow.config import Config
 from flow.engines import EngineUnavailable, make_transcriber
 from flow.history import History
@@ -28,8 +28,9 @@ class App:
         )
         self.engine_name = config.engine
         self.transcriber = make_transcriber(self.engine_name, config)
-        # Recent-dictations history (in-memory, menu-bar surfaced).
-        self.history = History()
+        # Recent-dictations history: per-build JSON file (flow.paths), so the
+        # newest dictation is re-pastable even after a restart. Menu-bar surfaced.
+        self.history = History(paths.DICTATIONS_PATH)
         self._switch_thread = None
         self._dictation_thread = None
         # Signals the active dictation worker to stop recording and process.
@@ -39,11 +40,15 @@ class App:
             on_activate=self._on_activate,
             on_deactivate=self._on_deactivate,
         )
+        # Diagnostic logging for the re-paste tap, dev builds only (it logs
+        # keycodes pressed while a modifier is held, so never in production).
+        self._repaste_debug = "repaste" if paths.IS_DEV else None
         # Second, independent listener (its own tap): a clean tap of this combo
         # re-pastes the most recent dictation into the focused window.
         self.repaste_hotkey = HotkeyListener(
             keys=config.repaste_keys,
             on_trigger=self._on_repaste,
+            debug_label=self._repaste_debug,
         )
         self._state = IDLE
         self._lock = threading.Lock()
@@ -184,6 +189,9 @@ class App:
         Only runs when the app is IDLE so it never races an in-flight
         dictation's clipboard save/restore.
         """
+        if self._repaste_debug:
+            print(f"[{self._repaste_debug}] trigger received -> _do_repaste "
+                  f"(state={self._state}); waiting for keys to release")
         # Wait for the combo to be fully released so the synthesized Cmd+V is a
         # plain paste, not Cmd+<modifiers>+V.
         self.repaste_hotkey.wait_all_released()
@@ -194,12 +202,11 @@ class App:
             self._state = PROCESSING
         self._notify("processing")
         try:
-            items = self.history.items()
-            if not items:
+            text = self.history.latest()
+            if text is None:
                 print("Re-paste requested but the history is empty.")
                 self.notify("No recent dictation to re-paste.")
                 return
-            text = items[0]
             shown = text if len(text) <= 80 else text[:77] + "…"
             if not self.can_paste():
                 print(
@@ -301,6 +308,7 @@ class App:
         self.repaste_hotkey = HotkeyListener(
             keys=repaste_keys,
             on_trigger=self._on_repaste,
+            debug_label=self._repaste_debug,
         )
         self.hotkey.start()
         self.repaste_hotkey.start()

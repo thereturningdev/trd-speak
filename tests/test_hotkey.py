@@ -19,10 +19,13 @@ from flow.hotkey import (
 # Virtual keycodes used by the driver below.
 _CTRL = 59  # left control
 _SHIFT = 56  # left shift
+_CMD = 55  # left command
 _FOUR = 21  # the "4" key (a screenshot shortcut's action key)
+_P = 35  # the "p" key (a character key in a chord like Cmd+Ctrl+P)
 
 _CTRL_MASK = hk.Quartz.kCGEventFlagMaskControl
 _SHIFT_MASK = hk.Quartz.kCGEventFlagMaskShift
+_CMD_MASK = hk.Quartz.kCGEventFlagMaskCommand
 
 
 def _listener():
@@ -132,6 +135,103 @@ def test_tap_after_contamination_fires_on_next_clean_hold(monkeypatch):
     d.modifier(_SHIFT, _CTRL_MASK | _SHIFT_MASK)
     d.modifier(_SHIFT, _CTRL_MASK)
     d.modifier(_CTRL, 0)
+    assert fired == [1]
+
+
+# --- tap mode with a character key in the chord (e.g. Cmd+Ctrl+P) ---------
+#
+# macOS withholds the keyUp of a character key while Command is held, so a
+# release-based trigger gets the character key "stuck" and stops firing (and
+# false-fires on the bare modifier subset). A chord that contains a character
+# key must therefore fire on the character key's keyDOWN — with the required
+# modifiers read from that event's absolute flags — and must re-arm when the
+# modifier flags clear, never depending on the character key's keyUp.
+
+
+def test_char_chord_tap_fires_on_character_keydown_with_modifiers_held(monkeypatch):
+    fired = []
+    listener = HotkeyListener(keys=["cmd", "ctrl", "p"], on_trigger=lambda: fired.append(1))
+    d = _Driver(listener, monkeypatch)
+
+    d.modifier(_CMD, _CMD_MASK)                # cmd down
+    d.modifier(_CTRL, _CMD_MASK | _CTRL_MASK)  # ctrl down -> both modifiers held
+    assert fired == []                         # modifiers alone must not fire
+    d.key_down(_P)                             # P down with Cmd+Ctrl in the flags
+
+    assert fired == [1]
+
+
+def test_char_chord_tap_does_not_fire_if_a_modifier_is_missing(monkeypatch):
+    fired = []
+    listener = HotkeyListener(keys=["cmd", "ctrl", "p"], on_trigger=lambda: fired.append(1))
+    d = _Driver(listener, monkeypatch)
+
+    d.modifier(_CTRL, _CTRL_MASK)  # only ctrl held — cmd is missing
+    d.key_down(_P)                 # P down without the full modifier set
+
+    assert fired == []
+
+
+def test_char_chord_tap_rearms_when_modifiers_release_even_if_char_keyup_never_arrives(monkeypatch):
+    """The character keyUp may never reach the listener (Command suppression);
+    re-arming must key off the modifier flags clearing so a second tap fires."""
+    fired = []
+    listener = HotkeyListener(keys=["cmd", "ctrl", "p"], on_trigger=lambda: fired.append(1))
+    d = _Driver(listener, monkeypatch)
+
+    # First tap.
+    d.modifier(_CMD, _CMD_MASK)
+    d.modifier(_CTRL, _CMD_MASK | _CTRL_MASK)
+    d.key_down(_P)
+    assert fired == [1]
+    # P's keyUp is suppressed (never delivered) — only the modifiers release.
+    d.modifier(_CMD, _CTRL_MASK)  # cmd up
+    d.modifier(_CTRL, 0)          # ctrl up -> all modifiers clear
+
+    # Second clean tap must fire again.
+    d.modifier(_CMD, _CMD_MASK)
+    d.modifier(_CTRL, _CMD_MASK | _CTRL_MASK)
+    d.key_down(_P)
+
+    assert fired == [1, 1]
+
+
+def test_char_chord_tap_does_not_fire_on_bare_modifiers_after_suppressed_char_keyup(monkeypatch):
+    """After a tap whose character keyUp was suppressed, pressing only the
+    modifiers (no character key) must NOT trigger — the character key must not
+    stay 'stuck' as held."""
+    fired = []
+    listener = HotkeyListener(keys=["cmd", "ctrl", "p"], on_trigger=lambda: fired.append(1))
+    d = _Driver(listener, monkeypatch)
+
+    d.modifier(_CMD, _CMD_MASK)
+    d.modifier(_CTRL, _CMD_MASK | _CTRL_MASK)
+    d.key_down(_P)                # fires
+    d.modifier(_CMD, _CTRL_MASK)  # cmd up (P keyUp suppressed)
+    d.modifier(_CTRL, 0)          # ctrl up
+    assert fired == [1]
+
+    # Tap ONLY Cmd+Ctrl (the modifier subset), no P.
+    d.modifier(_CMD, _CMD_MASK)
+    d.modifier(_CTRL, _CMD_MASK | _CTRL_MASK)
+    d.modifier(_CMD, _CTRL_MASK)
+    d.modifier(_CTRL, 0)
+
+    assert fired == [1]           # unchanged — no phantom trigger
+
+
+def test_char_chord_tap_autorepeat_does_not_double_fire(monkeypatch):
+    """Holding the character key emits repeated keyDowns; fire once per hold."""
+    fired = []
+    listener = HotkeyListener(keys=["cmd", "ctrl", "p"], on_trigger=lambda: fired.append(1))
+    d = _Driver(listener, monkeypatch)
+
+    d.modifier(_CMD, _CMD_MASK)
+    d.modifier(_CTRL, _CMD_MASK | _CTRL_MASK)
+    d.key_down(_P)  # initial press -> fires
+    d.key_down(_P)  # autorepeat
+    d.key_down(_P)  # autorepeat
+
     assert fired == [1]
 
 

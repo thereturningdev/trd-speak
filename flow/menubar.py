@@ -42,12 +42,12 @@ import AppKit
 import Foundation
 from Foundation import NSObject
 
-from flow import __version__, engine_state, hotkey_state, paster, permissions
+from flow import __version__, engine_state, hotkey_state, paster, paths, permissions
 from flow.app import App
 from flow.config import Config
 from flow.engines import ENGINE_NAMES, ENGINES
 
-LOG_PATH = os.path.expanduser("~/Library/Logs/trd-speak.log")
+LOG_PATH = paths.LOG_PATH
 
 _STATE_ICONS = {
     "waiting": "⏳",

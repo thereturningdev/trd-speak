@@ -6,6 +6,8 @@ from flow.config import Config, load_config
 
 
 def test_default_repaste_keys():
+    # Modifier-only cmd+ctrl: the live log proves this combo actually re-pastes
+    # on a real keyboard, unlike the char-chord path (see flow/config.py).
     assert Config().repaste_keys == ["cmd", "ctrl"]
 
 
