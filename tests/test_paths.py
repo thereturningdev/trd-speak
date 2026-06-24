@@ -44,3 +44,11 @@ def test_only_the_dev_build_is_relocated():
     # production build's existing config is never orphaned.
     assert paths._app_name(is_dev=False) == "TRD Speak"
     assert paths._app_name(is_dev=True) == "TRD Speak Dev"
+
+
+def test_dictionary_path_is_under_support_and_per_build():
+    prod = paths._derive("TRD Speak")
+    dev = paths._derive("TRD Speak Dev")
+    assert prod["dictionary"].name == "dictionary.json"
+    assert prod["dictionary"].parent == prod["support"]
+    assert prod["dictionary"] != dev["dictionary"]  # builds never clobber

@@ -61,6 +61,7 @@ def _derive(app_name: str) -> dict:
         "hotkeys": support / "hotkeys.json",
         "engine": support / "engine",
         "dictations": support / "dictations.json",
+        "dictionary": support / "dictionary.json",
     }
 
 
@@ -74,3 +75,4 @@ LOCK_PATH = _PATHS["lock"]
 HOTKEYS_PATH = _PATHS["hotkeys"]
 ENGINE_PATH = _PATHS["engine"]
 DICTATIONS_PATH = _PATHS["dictations"]
+DICTIONARY_PATH = _PATHS["dictionary"]
