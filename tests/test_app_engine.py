@@ -40,7 +40,7 @@ class FakeEngine(Transcriber):
             raise EngineUnavailable("nope")
         self.loaded = True
 
-    def transcribe(self, audio):
+    def transcribe(self, audio, hotwords=None):
         return "x"
 
     def unload(self):
@@ -224,7 +224,7 @@ def test_empty_transcription_is_not_recorded(app, monkeypatch):
 
     app.recorder = FakeRec()
     silent = FakeEngine("whisper")
-    silent.transcribe = lambda audio: ""  # heard nothing
+    silent.transcribe = lambda audio, hotwords=None: ""  # heard nothing
     app.transcriber = silent
 
     app._on_activate()
@@ -341,3 +341,30 @@ def test_on_repaste_pastes_via_worker_thread(app, monkeypatch):
 
     assert _wait_until(lambda: pasted == ["recovered "], 5)
     assert _wait_until(lambda: app._state == IDLE, 5)
+
+
+def test_process_applies_correction_to_paste_and_history(monkeypatch, tmp_path):
+    import flow.app as app_mod
+    from flow.config import Config
+    from flow.dictionary import Dictionary, Replacement
+
+    monkeypatch.setattr(app_mod.paths, "DICTATIONS_PATH", tmp_path / "d.json")
+    monkeypatch.setattr(app_mod.paths, "DICTIONARY_PATH", tmp_path / "dict.json")
+    monkeypatch.setattr(app_mod.HotkeyListener, "start", lambda self: None)
+    monkeypatch.setattr(app_mod.HotkeyListener, "stop", lambda self: None)
+    monkeypatch.setattr(app_mod, "make_transcriber", lambda *a, **k: object())
+
+    app = app_mod.App(Config())
+    app.dictionary = Dictionary(replacements=[Replacement("diotaleavy", "Diotalevi", learned=True)])
+    app.corrector = app_mod.TextCorrector(app.dictionary.replacements)
+
+    app.recorder = type("R", (), {"stop": lambda self: __import__("numpy").ones(16000, dtype="float32")})()
+    app.transcriber = type("T", (), {"transcribe": lambda self, audio, hotwords=None: "call diotaleavy"})()
+    monkeypatch.setattr(app, "can_paste", lambda: True)
+    monkeypatch.setattr(app.hotkey, "wait_all_released", lambda: True)
+    pasted = []
+    monkeypatch.setattr(app_mod, "paste_text", lambda s, **k: pasted.append(s))
+
+    app._process()
+    assert pasted == ["call Diotalevi "]
+    assert app.history.items()[0] == "call Diotalevi"

@@ -6,6 +6,8 @@ from typing import Callable
 
 from flow import engine_state, paths, permissions
 from flow.config import Config
+from flow.corrector import TextCorrector
+from flow.dictionary import load_dictionary
 from flow.engines import EngineUnavailable, make_transcriber
 from flow.history import History
 from flow.hotkey import HotkeyListener
@@ -31,6 +33,15 @@ class App:
         # Recent-dictations history: per-build JSON file (flow.paths), so the
         # newest dictation is re-pastable even after a restart. Menu-bar surfaced.
         self.history = History(paths.DICTATIONS_PATH)
+        # User dictionary (Tier A vocabulary + Tier B replacements). A malformed
+        # file must never stop dictation, so load failures degrade to empty.
+        try:
+            self.dictionary = load_dictionary(paths.DICTIONARY_PATH)
+        except ValueError as exc:
+            print(f"dictionary.json ignored ({exc}); using an empty dictionary.")
+            from flow.dictionary import Dictionary
+            self.dictionary = Dictionary()
+        self.corrector = TextCorrector(self.dictionary.replacements)
         self._switch_thread = None
         self._dictation_thread = None
         # Signals the active dictation worker to stop recording and process.
@@ -136,16 +147,23 @@ class App:
         self._notify("processing")
         self._stop_recording.set()
 
+    def _vocab_hint(self) -> str | None:
+        return ", ".join(self.dictionary.vocabulary) or None
+
     def _process(self) -> None:
         """Stop recording, transcribe, paste. Always returns to IDLE."""
         try:
             audio = self.recorder.stop()
             audio_secs = len(audio) / self.config.sample_rate
             start = time.monotonic()
-            text = self.transcriber.transcribe(audio)
+            text = self.transcriber.transcribe(audio, hotwords=self._vocab_hint())
             elapsed = time.monotonic() - start
             timing = f"[{audio_secs:.0f}s audio, transcribed in {elapsed:.1f}s]"
             if text:
+                try:
+                    text = self.corrector.correct(text)
+                except Exception as exc:  # never let correction break dictation
+                    print(f"Correction skipped ({exc}); pasting raw transcript.")
                 # Capture BEFORE the paste attempt: a dictation that fails to
                 # paste (keys still held, Accessibility missing) is exactly the
                 # kind the user needs to recover from the history.
