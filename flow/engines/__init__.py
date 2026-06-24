@@ -33,8 +33,8 @@ class Transcriber(abc.ABC):
         """Instantiate and warm up the model. Idempotent."""
 
     @abc.abstractmethod
-    def transcribe(self, audio: np.ndarray) -> str:
-        """Transcribe 16 kHz mono float32 audio to text."""
+    def transcribe(self, audio: np.ndarray, hotwords: str | None = None) -> str:
+        """Transcribe 16 kHz mono float32 audio to text, optionally biased by hotwords."""
 
     def unload(self) -> None:
         """Release the model and its memory. Idempotent. Default: no-op."""

@@ -62,18 +62,20 @@ class WhisperTranscriber(Transcriber):
             source, device="cpu", compute_type=self.compute_type
         )
 
-    def transcribe(self, audio: np.ndarray) -> str:
+    def transcribe(self, audio: np.ndarray, hotwords: str | None = None) -> str:
         if len(audio) < _SAMPLE_RATE * _MIN_SECONDS:
             return ""
         self.load()
         # vad_filter skips non-speech; condition_on_previous_text=False avoids
-        # repetition spirals and their expensive temperature re-decodes.
+        # repetition spirals. hotwords biases decoding toward custom vocabulary;
+        # NEVER set prefix — hotwords is silently ignored when prefix is set.
         segments, _info = self._model.transcribe(
             audio,
             language="en",
             beam_size=self.beam_size,
             vad_filter=True,
             condition_on_previous_text=False,
+            hotwords=hotwords or None,
         )
         return "".join(segment.text for segment in segments).strip()
 
