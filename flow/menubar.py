@@ -45,6 +45,9 @@ from Foundation import NSObject
 from flow import __version__, engine_state, hotkey_state, paster, paths, permissions
 from flow.app import App
 from flow.config import Config
+from flow.correction_window import open_correction_window
+from flow.corrector import TextCorrector
+from flow.dictionary import save_dictionary
 from flow.engines import ENGINE_NAMES, ENGINES
 
 LOG_PATH = paths.LOG_PATH
@@ -347,6 +350,54 @@ class _Delegate(NSObject):
             )
         controller.open()
 
+    def openCorrectionWindow_(self, _sender) -> None:
+        """Correct Last Dictation… row clicked: open the correction editor."""
+        logic = getattr(self, "logic", None)
+        if logic is None:
+            return
+        open_correction_window(logic)
+
+    def deleteLearnedRule_(self, sender) -> None:
+        """Learned-words row clicked: delete that single rule, save, rebuild."""
+        logic = getattr(self, "logic", None)
+        menubar = getattr(self, "menubar", None)
+        if logic is None or menubar is None:
+            return
+        from_word = str(sender.representedObject())
+        logic.dictionary.replacements = [
+            r for r in logic.dictionary.replacements
+            if not (r.learned and r.from_ == from_word)
+        ]
+        save_dictionary(logic.dictionary, paths.DICTIONARY_PATH)
+        logic.corrector = TextCorrector(logic.dictionary.replacements)
+        menubar._rebuild_learned_submenu()
+
+    def resetLearnedWords_(self, _sender) -> None:
+        """Reset Learned Words row clicked: remove all learned rules, save, rebuild."""
+        logic = getattr(self, "logic", None)
+        menubar = getattr(self, "menubar", None)
+        if logic is None or menubar is None:
+            return
+        logic.dictionary.replacements = [
+            r for r in logic.dictionary.replacements if not r.learned
+        ]
+        save_dictionary(logic.dictionary, paths.DICTIONARY_PATH)
+        logic.corrector = TextCorrector(logic.dictionary.replacements)
+        menubar._rebuild_learned_submenu()
+
+    def openDictionaryFile_(self, _sender) -> None:
+        """Open Dictionary File… row clicked: reveal the file (or its parent
+        dir) in Finder using NSWorkspace so we stay off the CLI."""
+        p = paths.DICTIONARY_PATH
+        if p.exists():
+            AppKit.NSWorkspace.sharedWorkspace().selectFile_inFileViewerRootedAtPath_(
+                str(p), ""
+            )
+        else:
+            AppKit.NSWorkspace.sharedWorkspace().selectFile_inFileViewerRootedAtPath_(
+                str(p.parent), ""
+            )
+
     def applicationShouldHandleReopen_hasVisibleWindows_(self, _app, _flag):
         # Dock icon clicked while running: open the status item's menu so
         # the Dock leads straight to the controls.
@@ -481,6 +532,40 @@ class MenuBar:
         self._config_item.setHidden_(True)
         menu.addItem_(self._config_item)
 
+        # ── Correction & Learning section ─────────────────────────────────────
+        # "Correct Last Dictation…" row.
+        self._correct_item = AppKit.NSMenuItem.alloc().initWithTitle_action_keyEquivalent_(
+            "Correct Last Dictation…", "openCorrectionWindow:", ""
+        )
+        self._correct_item.setTarget_(delegate)
+        self._correct_item.setHidden_(True)
+        menu.addItem_(self._correct_item)
+
+        # "Learned Words" submenu — populated by _rebuild_learned_submenu().
+        self._learned_root = AppKit.NSMenuItem.alloc().initWithTitle_action_keyEquivalent_(
+            "Learned Words", None, ""
+        )
+        self._learned_menu = AppKit.NSMenu.alloc().init()
+        self._learned_menu.setAutoenablesItems_(False)
+        self._learned_root.setSubmenu_(self._learned_menu)
+        self._learned_root.setHidden_(True)
+        menu.addItem_(self._learned_root)
+        # Populate initial (empty) state; rebuilt later when app.dictionary is live.
+        self._rebuild_learned_submenu()
+
+        # "Open Dictionary File…" row — reveals the file in Finder.
+        self._dict_file_item = AppKit.NSMenuItem.alloc().initWithTitle_action_keyEquivalent_(
+            "Open Dictionary File…", "openDictionaryFile:", ""
+        )
+        self._dict_file_item.setTarget_(delegate)
+        self._dict_file_item.setHidden_(True)
+        menu.addItem_(self._dict_file_item)
+
+        # Separator before the engine picker (visible only in normal state, like engine_separator).
+        self._correction_separator = AppKit.NSMenuItem.separatorItem()
+        self._correction_separator.setHidden_(True)
+        menu.addItem_(self._correction_separator)
+
         # Transcription engine picker (registry-driven).
         self._engine_root = AppKit.NSMenuItem.alloc().initWithTitle_action_keyEquivalent_(
             "Transcription Engine", None, ""
@@ -519,6 +604,48 @@ class MenuBar:
         menu.addItem_(quit_item)
 
         self._item.setMenu_(menu)
+
+    def _rebuild_learned_submenu(self) -> None:
+        """Rebuild the Learned Words submenu from the live dictionary.
+
+        Called on the main thread: at init (before app.dictionary is wired),
+        after each rule deletion/reset, and via app.on_learned after the editor
+        saves a new rule. Safe to call before the logic object is attached —
+        in that case the submenu simply shows "No learned words yet".
+        """
+        menu = self._learned_menu
+        menu.removeAllItems()
+
+        logic = getattr(self._delegate, "logic", None)
+        replacements = (
+            logic.dictionary.replacements if logic is not None else []
+        )
+        learned = [r for r in replacements if r.learned]
+
+        if learned:
+            for r in learned:
+                title = f"{r.from_} → {r.to}"
+                row = AppKit.NSMenuItem.alloc().initWithTitle_action_keyEquivalent_(
+                    title, "deleteLearnedRule:", ""
+                )
+                row.setTarget_(self._delegate)
+                row.setToolTip_(f"Click to delete this rule: {title}")
+                row.setRepresentedObject_(r.from_)
+                menu.addItem_(row)
+        else:
+            empty = AppKit.NSMenuItem.alloc().initWithTitle_action_keyEquivalent_(
+                "No learned words yet", None, ""
+            )
+            empty.setEnabled_(False)
+            menu.addItem_(empty)
+
+        menu.addItem_(AppKit.NSMenuItem.separatorItem())
+        reset = AppKit.NSMenuItem.alloc().initWithTitle_action_keyEquivalent_(
+            "Reset Learned Words", "resetLearnedWords:", ""
+        )
+        reset.setTarget_(self._delegate)
+        reset.setEnabled_(bool(learned))
+        menu.addItem_(reset)
 
     def open_menu(self) -> None:
         """Pop the status item's menu open (main thread only)."""
@@ -639,6 +766,10 @@ class MenuBar:
         show_engine = not (missing or mic_unknown or restart)
         self._history_root.setHidden_(not show_engine)
         self._config_item.setHidden_(not show_engine)
+        self._correct_item.setHidden_(not show_engine)
+        self._learned_root.setHidden_(not show_engine)
+        self._dict_file_item.setHidden_(not show_engine)
+        self._correction_separator.setHidden_(not show_engine)
         self._engine_root.setHidden_(not show_engine)
         self._engine_separator.setHidden_(not show_engine)
         ready = self._app_state == "ready"
@@ -684,6 +815,10 @@ def run(config: Config) -> None:
     logic.on_state = ui.set_state
     logic.on_engine = ui.update_engine
     logic.notify = _notify
+    # Wire correction & learning hooks so the global ⌘⌥ tap and the editor
+    # both open the same window, and a learned rule rebuilds the submenu live.
+    logic.open_correction_window = lambda: open_correction_window(logic)
+    logic.on_learned = lambda: _on_main(ui._rebuild_learned_submenu)
     delegate.logic = logic
     ui.update_engine(logic.engine_name)
 
