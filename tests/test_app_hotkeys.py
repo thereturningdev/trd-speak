@@ -27,22 +27,26 @@ def app(monkeypatch, tmp_path):
     return App(Config())
 
 
-def test_set_hotkeys_replaces_both_listeners_and_updates_config(app):
+def test_set_hotkeys_replaces_all_listeners_and_updates_config(app):
     old_dictate = app.hotkey
     old_repaste = app.repaste_hotkey
+    old_correct = app.correction_hotkey
 
-    app.set_hotkeys(["cmd", "ctrl", "v"], ["cmd", "shift", "r"])
+    app.set_hotkeys(["cmd", "ctrl", "v"], ["cmd", "shift", "r"], ["cmd", "alt", "c"])
 
     assert app.hotkey is not old_dictate
     assert app.repaste_hotkey is not old_repaste
+    assert app.correction_hotkey is not old_correct
     assert app.config.keys == ["cmd", "ctrl", "v"]
     assert app.config.repaste_keys == ["cmd", "shift", "r"]
+    assert app.config.correct_keys == ["cmd", "alt", "c"]
     # New listeners carry the new combos.
     assert app.hotkey._targets == frozenset({"cmd", "ctrl", "v"})
     assert app.repaste_hotkey._targets == frozenset({"cmd", "shift", "r"})
+    assert app.correction_hotkey._targets == frozenset({"cmd", "alt", "c"})
 
 
-def test_set_hotkeys_calls_stop_then_start_on_both(app, monkeypatch):
+def test_set_hotkeys_calls_stop_then_start_on_all_three(app, monkeypatch):
     events = []
     monkeypatch.setattr(
         app_mod.HotkeyListener, "stop", lambda self: events.append(("stop", id(self)))
@@ -50,17 +54,17 @@ def test_set_hotkeys_calls_stop_then_start_on_both(app, monkeypatch):
     monkeypatch.setattr(
         app_mod.HotkeyListener, "start", lambda self: events.append(("start", id(self)))
     )
-    old_ids = {id(app.hotkey), id(app.repaste_hotkey)}
+    old_ids = {id(app.hotkey), id(app.repaste_hotkey), id(app.correction_hotkey)}
 
-    app.set_hotkeys(["cmd", "ctrl", "v"], ["cmd", "shift", "r"])
+    app.set_hotkeys(["cmd", "ctrl", "v"], ["cmd", "shift", "r"], ["cmd", "alt", "c"])
 
     stops = [e for e in events if e[0] == "stop"]
     starts = [e for e in events if e[0] == "start"]
-    assert len(stops) == 2  # both old listeners stopped
-    assert len(starts) == 2  # both new listeners started
-    # The two stops are on the OLD listeners; the two starts on the NEW ones.
+    assert len(stops) == 3  # all three old listeners stopped
+    assert len(starts) == 3  # all three new listeners started
+    # The three stops are on the OLD listeners; the three starts on the NEW ones.
     assert {sid for _, sid in stops} == old_ids
-    new_ids = {id(app.hotkey), id(app.repaste_hotkey)}
+    new_ids = {id(app.hotkey), id(app.repaste_hotkey), id(app.correction_hotkey)}
     assert {sid for _, sid in starts} == new_ids
 
 

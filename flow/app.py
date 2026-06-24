@@ -330,11 +330,11 @@ class App:
             self._notify("ready")
 
     def suspend_hotkeys(self) -> None:
-        """Stop both global event taps (settings window opening).
+        """Stop all three global event taps (settings window opening).
 
         Listen-only taps keep observing keys even when a window is focused, so a
         combo pressed to RECORD a shortcut would also fire the live listener.
-        Suspending both makes the window's local NSEvent monitor the only
+        Suspending all three makes the window's local NSEvent monitor the only
         listener active while recording. Main thread only.
         """
         self.hotkey.stop()
@@ -342,7 +342,7 @@ class App:
         self.correction_hotkey.stop()
 
     def resume_hotkeys(self) -> None:
-        """Restart both taps with the unchanged config keys (Cancel / close
+        """Restart all three taps with the unchanged config keys (Cancel / close
         without save). start() recreates each tap after stop() cleared it.
         Main thread only.
         """
@@ -350,10 +350,16 @@ class App:
         self.repaste_hotkey.start()
         self.correction_hotkey.start()
 
-    def set_hotkeys(self, dictate_keys: list[str], repaste_keys: list[str]) -> None:
-        """Apply new shortcuts immediately (Save): stop both taps, rebuild both
-        HotkeyListener objects with the new keys and the SAME callbacks, start
-        both, and update self.config.keys / self.config.repaste_keys.
+    def set_hotkeys(
+        self,
+        dictate_keys: list[str],
+        repaste_keys: list[str],
+        correct_keys: list[str],
+    ) -> None:
+        """Apply new shortcuts immediately (Save): stop all three taps, rebuild
+        all three HotkeyListener objects with the new keys and the SAME callbacks,
+        start all three, and update self.config.keys / self.config.repaste_keys /
+        self.config.correct_keys.
 
         Main thread only — the same thread as the menu poll/watchdog, so there is
         no race. The watchdog reads logic.hotkey / logic.repaste_hotkey fresh each
@@ -362,6 +368,7 @@ class App:
         """
         self.hotkey.stop()
         self.repaste_hotkey.stop()
+        self.correction_hotkey.stop()
         self.hotkey = HotkeyListener(
             keys=dictate_keys,
             on_activate=self._on_activate,
@@ -372,10 +379,16 @@ class App:
             on_trigger=self._on_repaste,
             debug_label=self._repaste_debug,
         )
+        self.correction_hotkey = HotkeyListener(
+            keys=correct_keys,
+            on_trigger=self._on_correct,
+        )
         self.hotkey.start()
         self.repaste_hotkey.start()
+        self.correction_hotkey.start()
         self.config.keys = list(dictate_keys)
         self.config.repaste_keys = list(repaste_keys)
+        self.config.correct_keys = list(correct_keys)
 
     def start(self) -> None:
         """Load the active engine and start the hotkey listener (call off-main)."""

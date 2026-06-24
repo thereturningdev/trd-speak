@@ -1,12 +1,12 @@
-"""Configuration window: record the dictate + re-paste global shortcuts.
+"""Configuration window: record the dictate, re-paste, and correct global shortcuts.
 
 A programmatically-built NSWindow (no nib). NOT unit-tested — verified by
 import (`python -c "import flow.settings_window"`) plus manual run, consistent
 with flow.menubar already being un-unit-tested.
 
 The crux is recording a shortcut by *pressing* it. The global event taps are
-listen-only, so flow.app.App.suspend_hotkeys() stops both for the window's whole
-lifetime; while open, a recorder field's local NSEvent monitor is the only
+listen-only, so flow.app.App.suspend_hotkeys() stops all three for the window's
+whole lifetime; while open, a recorder field's local NSEvent monitor is the only
 listener active, so pressing a combo to record it never self-triggers a real
 dictation. Captured NSEvent keycodes/flags are mapped to canonical tokens via
 flow.hotkey.token_for_keycode / modifier_tokens_from_flags (the same tables the
@@ -214,13 +214,15 @@ class SettingsWindowController:
 
     def __init__(self, logic, menubar) -> None:
         """logic: flow.app.App (for set/suspend/resume_hotkeys + current
-        config.keys/config.repaste_keys). menubar: flow.menubar.MenuBar (for
-        update_combo on save). Builds the window lazily on first open()."""
+        config.keys/config.repaste_keys/config.correct_keys). menubar:
+        flow.menubar.MenuBar (for update_combo on save). Builds the window
+        lazily on first open()."""
         self._logic = logic
         self._menubar = menubar
         self._window = None
         self._dictate_recorder = None
         self._repaste_recorder = None
+        self._correct_recorder = None
         self._status = None
         self._delegate = None
         # True while a Save is closing the window, so the close handler does
@@ -230,7 +232,7 @@ class SettingsWindowController:
     # -- public entry point ------------------------------------------------
 
     def open(self) -> None:
-        """Activate the app, suspend the live taps, populate both recorder
+        """Activate the app, suspend the live taps, populate all three recorder
         fields with the current combos, clear the status line, and show the
         window."""
         AppKit.NSApplication.sharedApplication().activateIgnoringOtherApps_(True)
@@ -240,13 +242,14 @@ class SettingsWindowController:
         self._saved = False
         self._dictate_recorder.set_keys(list(self._logic.config.keys))
         self._repaste_recorder.set_keys(list(self._logic.config.repaste_keys))
+        self._correct_recorder.set_keys(list(self._logic.config.correct_keys))
         self._set_status("")
         self._window.makeKeyAndOrderFront_(None)
 
     # -- window construction ----------------------------------------------
 
     def _build_window(self) -> None:
-        width, height = 420.0, 200.0
+        width, height = 420.0, 244.0
         rect = Foundation.NSMakeRect(0, 0, width, height)
         style = (
             AppKit.NSWindowStyleMaskTitled
@@ -273,9 +276,16 @@ class SettingsWindowController:
         )
         content.addSubview_(self._repaste_recorder.button)
 
+        # Row 3: correct last dictation.
+        self._add_label("Correct last dictation:", 24, height - 132, content)
+        self._correct_recorder = _Recorder.alloc().initWithFrame_(
+            Foundation.NSMakeRect(180, height - 138, 216, 28)
+        )
+        content.addSubview_(self._correct_recorder.button)
+
         # Status / validation line.
         self._status = AppKit.NSTextField.alloc().initWithFrame_(
-            Foundation.NSMakeRect(24, height - 134, width - 48, 34)
+            Foundation.NSMakeRect(24, height - 176, width - 48, 34)
         )
         self._status.setBezeled_(False)
         self._status.setDrawsBackground_(False)
@@ -341,7 +351,7 @@ class SettingsWindowController:
     # -- Save / Cancel / close --------------------------------------------
 
     def save(self) -> None:
-        """Validate both combos, apply + persist + refresh, then close.
+        """Validate all three combos, apply + persist + refresh, then close.
 
         On any validation failure the message goes to the status line and the
         window stays open (nothing saved).
@@ -349,8 +359,10 @@ class SettingsWindowController:
         # End any in-progress recording so keys() reflects the final value.
         self._dictate_recorder.cancel_recording()
         self._repaste_recorder.cancel_recording()
+        self._correct_recorder.cancel_recording()
         dictate = self._dictate_recorder.keys()
         repaste = self._repaste_recorder.keys()
+        correct = self._correct_recorder.keys()
         try:
             validate_combo(dictate)
         except ValueError as exc:
@@ -361,17 +373,29 @@ class SettingsWindowController:
         except ValueError as exc:
             self._set_status(f"Paste: {exc}")
             return
+        try:
+            validate_combo(correct)
+        except ValueError as exc:
+            self._set_status(f"Correct: {exc}")
+            return
         if set(dictate) == set(repaste):
             self._set_status("Dictate and paste shortcuts cannot be identical.")
             return
+        if set(dictate) == set(correct):
+            self._set_status("Dictate and correct shortcuts cannot be identical.")
+            return
+        if set(repaste) == set(correct):
+            self._set_status("Paste and correct shortcuts cannot be identical.")
+            return
         # Overlapping-but-different: a strict subset of the other. Non-blocking.
-        d_set, r_set = set(dictate), set(repaste)
-        if d_set < r_set or r_set < d_set:
+        d_set, r_set, c_set = set(dictate), set(repaste), set(correct)
+        if d_set < r_set or r_set < d_set or d_set < c_set or c_set < d_set \
+                or r_set < c_set or c_set < r_set:
             self._set_status(
-                "Warning: the shortcuts overlap, but that is allowed."
+                "Warning: some shortcuts overlap, but that is allowed."
             )
-        self._logic.set_hotkeys(dictate, repaste)
-        hotkey_state.save(dictate, repaste)
+        self._logic.set_hotkeys(dictate, repaste, correct)
+        hotkey_state.save(dictate, repaste, correct)
         self._menubar.update_combo(dictate, repaste)
         # set_hotkeys already started the new taps — do NOT resume on close.
         self._saved = True
@@ -389,6 +413,8 @@ class SettingsWindowController:
             self._dictate_recorder.cancel_recording()
         if self._repaste_recorder is not None:
             self._repaste_recorder.cancel_recording()
+        if self._correct_recorder is not None:
+            self._correct_recorder.cancel_recording()
         if not self._saved:
             self._logic.resume_hotkeys()
         self._saved = False
