@@ -2,15 +2,18 @@
 
 import threading
 import time
+from datetime import datetime
 from typing import Callable
 
 from flow import engine_state, paths, permissions
+from flow.common_words import is_common
 from flow.config import Config
 from flow.corrector import TextCorrector
-from flow.dictionary import load_dictionary
+from flow.dictionary import load_dictionary, save_dictionary
 from flow.engines import EngineUnavailable, make_transcriber
 from flow.history import History
 from flow.hotkey import HotkeyListener
+from flow.learning import derive
 from flow.paster import paste_text
 from flow.recorder import Recorder
 
@@ -62,6 +65,12 @@ class App:
             on_trigger=self._on_repaste,
             debug_label=self._repaste_debug,
         )
+        # Third independent listener: a clean tap opens the correction editor on
+        # the last dictation (learn-from-correction). Same tap pattern as re-paste.
+        self.correction_hotkey = HotkeyListener(
+            keys=config.correct_keys,
+            on_trigger=self._on_correct,
+        )
         self._state = IDLE
         self._lock = threading.Lock()
         # Optional UI hooks.
@@ -69,6 +78,9 @@ class App:
         self.on_state: Callable[[str], None] | None = None
         # on_engine: called with the active engine name after start/switch.
         self.on_engine: Callable[[str], None] | None = None
+        # GUI hooks (set by the menubar/window layer).
+        self.open_correction_window: Callable[[], None] | None = None
+        self.on_learned: Callable[[], None] | None = None
         # User-facing notifier (menubar wires this to a macOS notification).
         self.notify: Callable[[str], None] = lambda _msg: None
         # Pre-paste permission check. The default in-process preflight is
@@ -241,6 +253,35 @@ class App:
             with self._lock:
                 self._state = IDLE
             self._notify("ready")
+
+    def _on_correct(self) -> None:
+        """Correction hotkey tapped: open the editor (set by the GUI layer)."""
+        if self.open_correction_window is not None:
+            self.open_correction_window()
+
+    def learn(self, original: str, edited: str) -> None:
+        """Derive safe rules + vocab from a correction, persist, and apply live."""
+        if original == edited:
+            return
+        result = derive(original, edited, is_common, ts=datetime.now().isoformat())
+        if not result.rules and not result.vocab:
+            return
+        existing = {r.from_.lower() for r in self.dictionary.replacements}
+        for r in result.rules:
+            if r.from_.lower() in existing:
+                self.dictionary.replacements = [
+                    x for x in self.dictionary.replacements
+                    if x.from_.lower() != r.from_.lower()
+                ]
+            self.dictionary.replacements.append(r)
+        have = {v.lower() for v in self.dictionary.vocabulary}
+        for v in result.vocab:
+            if v.lower() not in have:
+                self.dictionary.vocabulary.append(v)
+        save_dictionary(self.dictionary, paths.DICTIONARY_PATH)
+        self.corrector = TextCorrector(self.dictionary.replacements)
+        if self.on_learned is not None:
+            self.on_learned()
 
     def set_engine(self, name: str) -> None:
         """Switch transcription engine: load+warm new, then unload old.
