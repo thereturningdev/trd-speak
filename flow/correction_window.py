@@ -54,7 +54,7 @@ def open_correction_window(app) -> None:
     controller.open(original)
 
 
-class _TextViewDelegate(NSObject):
+class _CorrectionTextViewDelegate(NSObject):
     """NSTextView delegate that calls back into the controller on every change."""
 
     def textDidChange_(self, _notification) -> None:
@@ -63,7 +63,7 @@ class _TextViewDelegate(NSObject):
             controller._refresh_preview()
 
 
-class _WindowDelegate(NSObject):
+class _CorrectionWindowDelegate(NSObject):
     """Routes the NSWindow close (X button) to the controller's cancel path."""
 
     def windowWillClose_(self, _notification) -> None:
@@ -72,7 +72,7 @@ class _WindowDelegate(NSObject):
             controller._on_window_will_close()
 
 
-class _ButtonTarget(NSObject):
+class _CorrectionButtonTarget(NSObject):
     """ObjC target for the Save/Cancel buttons; forwards to the controller."""
 
     def saveClicked_(self, _sender) -> None:
@@ -162,7 +162,7 @@ class CorrectionWindowController:
         text_view.setAutoresizingMask_(AppKit.NSViewWidthSizable)
 
         # Wire up the delegate for live preview.
-        self._text_delegate = _TextViewDelegate.alloc().init()
+        self._text_delegate = _CorrectionTextViewDelegate.alloc().init()
         self._text_delegate._controller = self
         text_view.setDelegate_(self._text_delegate)
 
@@ -212,7 +212,7 @@ class CorrectionWindowController:
         content.addSubview_(save)
 
         # -- Window delegate (X button → cancel path) -------------------------
-        self._delegate = _WindowDelegate.alloc().init()
+        self._delegate = _CorrectionWindowDelegate.alloc().init()
         self._delegate._controller = self
         window.setDelegate_(self._delegate)
         self._window = window
@@ -234,7 +234,7 @@ class CorrectionWindowController:
     def _action_target(self):
         """Return (and cache) the ObjC button-target object."""
         if self._button_target is None:
-            self._button_target = _ButtonTarget.alloc().init()
+            self._button_target = _CorrectionButtonTarget.alloc().init()
             self._button_target._controller = self
         return self._button_target
 
