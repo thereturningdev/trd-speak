@@ -253,6 +253,95 @@ def test_hold_mode_still_fires_activate_and_deactivate(monkeypatch):
     assert events == ["on", "off"]
 
 
+# --- modifier-only chords under DROPPED / COALESCED / keycode-0 flagsChanged ---
+#
+# On real hardware a flagsChanged transition can be missed (the tap is briefly
+# disabled by timeout, or the callback is slow), two near-simultaneous modifier
+# changes can surface as a single event, and the carried keycode is sometimes 0
+# (ShortcutRecorder #129). In every such case the ABSOLUTE CGEventGetFlags()
+# bitmask is still authoritative. The listener must reconcile every modifier
+# against that bitmask on each event (the documented Hammerspoon/Karabiner/
+# pynput practice) rather than toggling shadow state per keycode — otherwise a
+# single missed/merged press leaves a modifier un-held and the trigger never
+# fires. The old per-keycode press toggle could not survive these; the mocked
+# _Driver below feeds the exact event streams that expose it.
+
+
+def test_tap_fires_when_both_modifiers_arrive_in_one_event(monkeypatch):
+    """Cmd+Ctrl where a single flagsChanged carries one keycode but absolute
+    flags already show BOTH modifiers down (a coalesced press)."""
+    fired = []
+    listener = HotkeyListener(keys=["cmd", "ctrl"], on_trigger=lambda: fired.append(1))
+    d = _Driver(listener, monkeypatch)
+
+    d.modifier(_CMD, _CMD_MASK | _CTRL_MASK)  # one event, both bits set
+    assert fired == []  # nothing on press
+    d.modifier(_CTRL, _CMD_MASK)  # ctrl up
+    d.modifier(_CMD, 0)  # cmd up -> clean release
+
+    assert fired == [1]
+
+
+def test_tap_self_heals_after_a_dropped_modifier_press(monkeypatch):
+    """Cmd's flagsChanged is never delivered (dropped). The next event (Ctrl)
+    carries absolute flags showing both, so the combo must still register."""
+    fired = []
+    listener = HotkeyListener(keys=["cmd", "ctrl"], on_trigger=lambda: fired.append(1))
+    d = _Driver(listener, monkeypatch)
+
+    # No event for Cmd at all; Ctrl's event reports both bits already down.
+    d.modifier(_CTRL, _CMD_MASK | _CTRL_MASK)
+    d.modifier(_CTRL, _CMD_MASK)  # ctrl up
+    d.modifier(_CMD, 0)  # cmd up
+
+    assert fired == [1]
+
+
+def test_tap_reconciles_a_keycode_zero_flagschanged(monkeypatch):
+    """A flagsChanged carrying keycode 0 (ShortcutRecorder #129) but flags
+    showing the full chord must still arm and fire off the absolute bitmask."""
+    fired = []
+    listener = HotkeyListener(keys=["cmd", "ctrl"], on_trigger=lambda: fired.append(1))
+    d = _Driver(listener, monkeypatch)
+
+    d.modifier(0, _CMD_MASK | _CTRL_MASK)  # bogus keycode, both bits
+    d.modifier(0, 0)  # release, flags clear
+
+    assert fired == [1]
+
+
+def test_tap_coalesced_release_still_fires_exactly_once(monkeypatch):
+    """Both modifiers release in a single event (flags -> 0). Regression guard
+    for the simultaneous-release fix: fire once, never zero or twice."""
+    fired = []
+    listener = HotkeyListener(keys=["cmd", "ctrl"], on_trigger=lambda: fired.append(1))
+    d = _Driver(listener, monkeypatch)
+
+    d.modifier(_CMD, _CMD_MASK)
+    d.modifier(_CTRL, _CMD_MASK | _CTRL_MASK)  # combo held
+    d.modifier(_CMD, 0)  # both released at once
+
+    assert fired == [1]
+
+
+def test_hold_mode_activates_on_a_coalesced_press(monkeypatch):
+    """The push-to-talk (hold) combo must also activate when both modifiers
+    arrive in one event — the same desync that silenced the tap combos."""
+    events = []
+    listener = HotkeyListener(
+        keys=["ctrl", "shift"],
+        on_activate=lambda: events.append("on"),
+        on_deactivate=lambda: events.append("off"),
+    )
+    d = _Driver(listener, monkeypatch)
+
+    d.modifier(_CTRL, _CTRL_MASK | _SHIFT_MASK)  # coalesced press -> activate
+    assert events == ["on"]
+    d.modifier(_CTRL, 0)  # both up -> deactivate
+
+    assert events == ["on", "off"]
+
+
 def test_ensure_enabled_is_noop_without_a_tap():
     listener = _listener()
     assert listener._tap is None

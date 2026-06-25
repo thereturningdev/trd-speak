@@ -20,6 +20,7 @@ from __future__ import annotations
 
 import threading
 import time
+import traceback
 from typing import Callable
 
 import Quartz
@@ -182,9 +183,16 @@ class HotkeyListener:
         on_deactivate: Callable[[], None] | None = None,
         on_trigger: Callable[[], None] | None = None,
         debug_label: str | None = None,
+        name: str | None = None,
     ) -> None:
         if not keys:
             raise ValueError("Hotkey keys list must not be empty")
+        # Always-on label used to ATTRIBUTE errors to a specific tap (e.g.
+        # "correction"). An exception raised by the on_trigger callback — for
+        # example the correction window failing to build — surfaces here, so
+        # without the label every tap's failures read identically and a window
+        # bug masquerades as a generic "tap error".
+        self._name = name or debug_label or "hotkey"
         # Diagnostic logging label (e.g. "repaste"); None disables all logging.
         # Gated by the caller to dev builds only — never the production build —
         # because it logs keycodes pressed while a modifier is held.
@@ -354,19 +362,34 @@ class HotkeyListener:
                     Quartz.CGEventTapEnable(self._tap, True)
                     print("Keyboard event tap was disabled by the system — re-enabled it.")
                 return event
+            # Modifiers are tracked SOLELY from the absolute CGEventGetFlags()
+            # bitmask, never from the per-event keycode: that keycode can be
+            # dropped, merged with another modifier's change, or arrive as 0
+            # (ShortcutRecorder #129), and any one missed toggle would desync a
+            # shadow state that never re-syncs. Reconciling every target
+            # modifier against the absolute flags on each flagsChanged is the
+            # documented Hammerspoon/Karabiner/pynput practice and self-heals.
+            if event_type == Quartz.kCGEventFlagsChanged:
+                flags = Quartz.CGEventGetFlags(event)
+                self._reconcile_modifiers(flags)
+                if self._keydown_fire:
+                    self._rearm_on_modifier_release(flags)
+                return event
             keycode = Quartz.CGEventGetIntegerValueField(
                 event, Quartz.kCGKeyboardEventKeycode
             )
             token = self._keycode_to_token.get(keycode)
-            if token is None:
-                # A non-combo key. For a modifier-only tap combo, an ordinary
-                # key pressed while the combo is held contaminates the hold
-                # (e.g. the "4" of Cmd+Ctrl+Shift+4), so the trigger will not
-                # fire on release. A keydown-fire combo has already fired on its
-                # own character key, so stray keys are irrelevant to it. Other
-                # modifiers arrive as flagsChanged and are ignored here.
+            if token is None or token in self._target_mods:
+                # A non-combo key, or a stray modifier keyDown/keyUp (modifiers
+                # are handled above via flagsChanged and ignored here). For a
+                # modifier-only tap combo, an ordinary key pressed while the
+                # combo is held contaminates the hold (e.g. the "4" of
+                # Cmd+Ctrl+Shift+4), so the trigger will not fire on release. A
+                # keydown-fire combo has already fired on its own character key,
+                # so stray keys are irrelevant to it.
                 if (
-                    self._mode == "tap"
+                    token is None
+                    and self._mode == "tap"
                     and not self._keydown_fire
                     and event_type == Quartz.kCGEventKeyDown
                 ):
@@ -374,9 +397,10 @@ class HotkeyListener:
                         if self._active:
                             self._contaminated = True
                 return event
-            if self._keydown_fire and token in self._target_keys:
-                # The chord's character key: fire on its keyDown (modifiers read
-                # from this event's absolute flags), never on its keyUp.
+            # token is a character key belonging to this chord.
+            if self._keydown_fire:
+                # Fire on its keyDown (modifiers read from this event's absolute
+                # flags), never on its keyUp.
                 if event_type == Quartz.kCGEventKeyDown:
                     self._char_key_down(token, Quartz.CGEventGetFlags(event))
                 elif event_type == Quartz.kCGEventKeyUp:
@@ -386,13 +410,17 @@ class HotkeyListener:
                 self._press(token, keycode)
             elif event_type == Quartz.kCGEventKeyUp:
                 self._release(token, keycode)
-            elif event_type == Quartz.kCGEventFlagsChanged:
-                flags = Quartz.CGEventGetFlags(event)
-                self._flags_changed(token, keycode, flags)
-                if self._keydown_fire:
-                    self._rearm_on_modifier_release(flags)
         except Exception as exc:
-            print(f"Hotkey tap callback error: {exc}")
+            # Includes exceptions raised by the on_trigger / on_activate
+            # callbacks (they run synchronously from here). Log the tap's name
+            # AND the full traceback: a bare message like "No attribute
+            # monospacedSystemFontOfSize_" with no stack and no tap identity is
+            # exactly what made a one-line correction-window bug take many
+            # rounds to localize.
+            print(
+                f"[{self._name}] tap callback error: {exc}\n"
+                f"{traceback.format_exc()}"
+            )
         return event
 
     def _dbg(self, msg: str) -> None:
@@ -458,44 +486,44 @@ class HotkeyListener:
                 f"{sorted(modifier_tokens_from_flags(flags))})"
             )
 
-    def _flags_changed(self, token: str, keycode: int, flags: int) -> None:
-        """Resolve modifier presses/releases from a flagsChanged event.
+    def _reconcile_modifiers(self, flags: int) -> None:
+        """Make the set of held TARGET modifiers exactly match those present in
+        the absolute flag bitmask, pressing or releasing as needed.
 
-        flagsChanged carries the keycode of the physical key that changed AND
-        the ABSOLUTE modifier flags now in effect. Two steps:
+        This is the whole modifier story: flagsChanged carries the ABSOLUTE
+        modifier flags now in effect, and that bitmask — not the per-event
+        keycode — is authoritative. Driving state purely from it means a
+        dropped flagsChanged, two modifiers changing in one event, or an event
+        carrying keycode 0 all self-heal on the very next event and can never
+        leave a target modifier stuck held (which would wedge
+        wait_all_released) or stuck un-held (which would silently drop every
+        trigger — the bug this replaces).
 
-        1. If the carried token's mask bit is set, the keycode toggled — press
-           it if we did not have it held, release that variant if we did.
-        2. Reconcile EVERY held modifier against the absolute flags: release any
-           modifier token whose mask bit is now clear. This is what makes the
-           listener self-healing — a missed release, or TWO modifiers clearing
-           in a single event (a quick simultaneous release can surface as one
-           flagsChanged carrying just one keycode), can never leave a modifier
-           stuck in _held. A stuck modifier would wedge wait_all_released() and
-           silently drop the next trigger.
+        Held modifiers collapse to one entry per token keyed on the token's
+        canonical keycode: left/right variants share a flag bit, so the bit
+        stays set while either is down and clears only when the last goes up —
+        exactly the variant semantics, without per-keycode bookkeeping.
+        Character keys (tracked by keyDown/keyUp) are deliberately untouched.
         """
-        if flags & _MODIFIER_MASKS[token]:
-            with self._cond:
-                held_now = keycode in self._held.get(token, ())
-            if held_now:
-                self._release(token, keycode)
-            else:
-                self._press(token, keycode)
-        self._release_modifiers_absent_from(flags)
-
-    def _release_modifiers_absent_from(self, flags: int) -> None:
-        """Release every held modifier variant whose flag bit is clear in
-        `flags`. Non-modifier ("character") keys are tracked by keyDown/keyUp,
-        not by the flag bits, so they are deliberately left untouched here."""
+        present = modifier_tokens_from_flags(flags) & self._target_mods
         with self._cond:
             stale = [
                 (tok, kc)
-                for tok, variants in self._held.items()
-                if tok in _MODIFIER_MASKS and not (flags & _MODIFIER_MASKS[tok])
-                for kc in list(variants)
+                for tok in self._held
+                if tok in self._target_mods and tok not in present
+                for kc in list(self._held[tok])
             ]
+            fresh = [tok for tok in present if tok not in self._held]
+        if self._debug and (fresh or stale):
+            self._dbg(
+                f"reconcile: flags_mods={sorted(modifier_tokens_from_flags(flags))} "
+                f"present={sorted(present)} held={sorted(self._held)} "
+                f"press={fresh} release={[t for t, _ in stale]}"
+            )
         for tok, kc in stale:
             self._release(tok, kc)
+        for tok in fresh:
+            self._press(tok, _keycodes_for_token(tok)[0])
 
     def _press(self, token: str, keycode: int) -> None:
         fire_activate = False

@@ -180,7 +180,9 @@ class CorrectionWindowController:
         preview.setEditable_(False)
         preview.setSelectable_(False)
         preview.setStringValue_("No new rule from this edit.")
-        preview.setFont_(AppKit.NSFont.monospacedSystemFontOfSize_(11, AppKit.NSFontWeightRegular))
+        preview.setFont_(
+            AppKit.NSFont.monospacedSystemFontOfSize_weight_(11, AppKit.NSFontWeightRegular)
+        )
         preview.setLineBreakMode_(AppKit.NSLineBreakByWordWrapping)
         preview.cell().setWraps_(True)
         content.addSubview_(preview)

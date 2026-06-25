@@ -52,6 +52,7 @@ class App:
             keys=config.keys,
             on_activate=self._on_activate,
             on_deactivate=self._on_deactivate,
+            name="dictation",
         )
         # Diagnostic logging for the re-paste tap, dev builds only: traces when
         # the combo fires and re-arms so the real macOS tap can be verified on
@@ -63,12 +64,14 @@ class App:
             keys=config.repaste_keys,
             on_trigger=self._on_repaste,
             debug_label=self._repaste_debug,
+            name="re-paste",
         )
         # Third independent listener: a clean tap opens the correction editor on
         # the last dictation (learn-from-correction). Same tap pattern as re-paste.
         self.correction_hotkey = HotkeyListener(
             keys=config.correct_keys,
             on_trigger=self._on_correct,
+            name="correction",
         )
         self._state = IDLE
         self._lock = threading.Lock()
@@ -255,6 +258,11 @@ class App:
 
     def _on_correct(self) -> None:
         """Correction hotkey tapped: open the editor (set by the GUI layer)."""
+        # Always log the fire: it is the unambiguous evidence the correction tap
+        # triggered, separating "the shortcut never fired" (a tap/modifier issue)
+        # from "it fired but the window failed" (a UI issue) — the exact
+        # ambiguity that made this bug hard to localize.
+        print("Correction hotkey tapped — opening the correction editor.")
         if self.open_correction_window is not None:
             self.open_correction_window()
 
@@ -341,6 +349,21 @@ class App:
                 self._state = IDLE
             self._notify("ready")
 
+    def iter_hotkeys(self) -> tuple[tuple[str, HotkeyListener], ...]:
+        """Every active global listener as (label, listener), read fresh.
+
+        The single source of truth for "all taps", so periodic machinery
+        (watchdog re-enable, liveness heartbeat) can never silently omit one —
+        the correction tap was previously left out of the watchdog, so a tap
+        macOS disabled stayed dead until restart. set_hotkeys rebinds these
+        attributes, so callers must call this each tick rather than caching.
+        """
+        return (
+            ("Hotkey", self.hotkey),
+            ("Re-paste", self.repaste_hotkey),
+            ("Correction", self.correction_hotkey),
+        )
+
     def suspend_hotkeys(self) -> None:
         """Stop all three global event taps (settings window opening).
 
@@ -385,15 +408,18 @@ class App:
             keys=dictate_keys,
             on_activate=self._on_activate,
             on_deactivate=self._on_deactivate,
+            name="dictation",
         )
         self.repaste_hotkey = HotkeyListener(
             keys=repaste_keys,
             on_trigger=self._on_repaste,
             debug_label=self._repaste_debug,
+            name="re-paste",
         )
         self.correction_hotkey = HotkeyListener(
             keys=correct_keys,
             on_trigger=self._on_correct,
+            name="correction",
         )
         self.hotkey.start()
         self.repaste_hotkey.start()

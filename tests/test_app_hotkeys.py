@@ -81,6 +81,45 @@ def test_suspend_hotkeys_stops_all_three(app, monkeypatch):
     assert id(app.correction_hotkey) in stopped
 
 
+def test_iter_hotkeys_includes_all_three_taps(app):
+    """The single source of truth the watchdog/heartbeat iterate over must name
+    every tap — including the correction tap, previously omitted, which left it
+    unwatched and able to stay dead until restart."""
+    listeners = {label: lis for label, lis in app.iter_hotkeys()}
+    assert set(listeners) == {"Hotkey", "Re-paste", "Correction"}
+    assert listeners["Hotkey"] is app.hotkey
+    assert listeners["Re-paste"] is app.repaste_hotkey
+    assert listeners["Correction"] is app.correction_hotkey
+
+
+def test_iter_hotkeys_tracks_rebuilt_listeners_after_set_hotkeys(app):
+    """Read fresh, so the watchdog follows set_hotkeys' new objects, not stale
+    ones — the property that makes 'apply a new shortcut' actually take hold."""
+    app.set_hotkeys(["cmd", "ctrl", "v"], ["cmd", "shift", "r"], ["cmd", "alt", "c"])
+    listeners = {label: lis for label, lis in app.iter_hotkeys()}
+    assert listeners["Correction"] is app.correction_hotkey
+    assert listeners["Re-paste"] is app.repaste_hotkey
+
+
+def test_watchdog_reenables_every_disabled_tap_including_correction(app, monkeypatch):
+    """The watchdog must re-enable ALL taps macOS disabled. Regression guard:
+    the correction tap was previously never re-enabled by the watchdog."""
+    from flow import menubar
+
+    # Every listener reports itself disabled-then-reenabled once.
+    monkeypatch.setattr(
+        app_mod.HotkeyListener, "ensure_enabled", lambda self: True
+    )
+    reenabled = menubar.reenable_disabled_taps(app)
+    assert set(reenabled) == {"Hotkey", "Re-paste", "Correction"}
+
+    # When nothing is disabled, the watchdog reports nothing.
+    monkeypatch.setattr(
+        app_mod.HotkeyListener, "ensure_enabled", lambda self: False
+    )
+    assert menubar.reenable_disabled_taps(app) == []
+
+
 def test_resume_hotkeys_starts_all_three(app, monkeypatch):
     started = []
     monkeypatch.setattr(
