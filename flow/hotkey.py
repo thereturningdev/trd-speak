@@ -258,9 +258,21 @@ class HotkeyListener:
             | Quartz.CGEventMaskBit(Quartz.kCGEventKeyUp)
             | Quartz.CGEventMaskBit(Quartz.kCGEventFlagsChanged)
         )
+        # Head-insert, NOT tail-append. A tail-append tap sits at the END of the
+        # session tap chain, so an upstream ACTIVE tap that claims a combo as a
+        # shortcut (and returns NULL) deletes the event before we ever see it.
+        # The keys that get claimed this way are overwhelmingly ⌘-combos, so a
+        # tail tap silently misses Command shortcuts (cmd+alt, cmd+ctrl+p) while
+        # ctrl/shift/alt combos — which nothing upstream claims — pass through.
+        # Whether the miss bites depends on the (non-deterministic) registration
+        # order of every other tap on the machine, so it presents as "works in
+        # one build, dead in another". Head-insert places us FIRST in the chain
+        # — the documented practice of every reliable hotkey tool (Hammerspoon,
+        # skhd) — so Command combos reach us before any consumer. We stay
+        # listen-only: we only observe, never swallow the user's keystrokes.
         tap = Quartz.CGEventTapCreate(
             Quartz.kCGSessionEventTap,
-            Quartz.kCGTailAppendEventTap,
+            Quartz.kCGHeadInsertEventTap,
             Quartz.kCGEventTapOptionListenOnly,
             mask,
             callback,

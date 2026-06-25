@@ -342,6 +342,39 @@ def test_hold_mode_activates_on_a_coalesced_press(monkeypatch):
     assert events == ["on", "off"]
 
 
+def test_start_uses_head_insert_so_command_combos_are_not_eaten(monkeypatch):
+    """start() must create the tap HEAD-INSERT, not tail-append.
+
+    Tail-append puts the tap last in the session chain, so an upstream active
+    tap that claims a ⌘-shortcut deletes the event before we see it — the exact
+    cause of "Command combos silently never fire" (cmd+alt, cmd+ctrl+p) while
+    ctrl/shift combos work. Head-insert (kCGHeadInsertEventTap) runs us first,
+    the practice of every reliable hotkey tool. This guards the regression.
+    """
+    captured = {}
+
+    def fake_create(location, placement, option, mask, callback, refcon):
+        captured["location"] = location
+        captured["placement"] = placement
+        captured["option"] = option
+        return object()  # a non-None sentinel tap
+
+    monkeypatch.setattr(hk.Quartz, "CGEventTapCreate", fake_create)
+    monkeypatch.setattr(hk.Quartz, "CFMachPortCreateRunLoopSource", lambda *a: object())
+    monkeypatch.setattr(hk.Quartz, "CFRunLoopGetMain", lambda: object())
+    monkeypatch.setattr(hk.Quartz, "CFRunLoopAddSource", lambda *a: None)
+    monkeypatch.setattr(hk.Quartz, "CGEventTapEnable", lambda *a: None)
+    monkeypatch.setattr(hk.Quartz, "CFRunLoopWakeUp", lambda *a: None)
+
+    _listener().start()
+
+    assert captured["placement"] == hk.Quartz.kCGHeadInsertEventTap
+    assert captured["placement"] != hk.Quartz.kCGTailAppendEventTap
+    # Location and option are deliberately unchanged: session-level, listen-only.
+    assert captured["location"] == hk.Quartz.kCGSessionEventTap
+    assert captured["option"] == hk.Quartz.kCGEventTapOptionListenOnly
+
+
 def test_ensure_enabled_is_noop_without_a_tap():
     listener = _listener()
     assert listener._tap is None
