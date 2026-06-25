@@ -3,6 +3,7 @@
   "replacements": [
     { "from": "fast whisper", "to": "faster-whisper" },
     { "from": "see translate", "to": "CTranslate2" },
-    { "from": "lo cal flow", "to": "LocalFlow", "case_sensitive": true }
+    { "from": "lo cal flow", "to": "LocalFlow", "case_sensitive": true },
+    { "from": "ml", "to": "ML", "whole_word": false }
   ]
 }

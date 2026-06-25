@@ -100,16 +100,20 @@ its own. And you can revoke a permission at any time; the icon goes back to
   of the common word are not corrupted. Learned rules accumulate silently;
   the shortcut is configurable in **Configuration…** alongside the dictation
   and re-paste shortcuts.
-- **Learned words** (menu submenu) lists every rule the app has learned. You
-  can remove individual rules from here; **"Open dictionary file…"** reveals
-  the underlying JSON so you can inspect or hand-edit it.
+- **Learned Words** (a submenu) lists every rule the app has learned; you can
+  remove individual rules from here. A separate **Open Dictionary File…** item
+  (a sibling of the submenu, not nested under it) reveals the underlying JSON
+  in Finder so you can inspect or hand-edit it.
 - The **dictionary file** lives at
   `~/Library/Application Support/TRD Speak[ Dev]/dictionary.json` and
   survives reinstall. It contains two sections: `vocabulary` (proper nouns and
   technical terms that bias transcription) and `replacements` (from→to rewrite
-  rules, each with an optional `case_sensitive` flag). See
-  `dictionary.json.example` in the repo for the format. The file is created
-  on first save; you can seed it manually at any time.
+  rules). Each replacement supports: `from` and `to` (required strings),
+  `case_sensitive` (default `false`), and `whole_word` (default `true` — set
+  `false` to match inside larger words). The app also writes `learned` and `ts`
+  on rules it learns from your corrections; you don't write those yourself. See
+  `dictionary.json.example` in the repo for the format. The file is created on
+  first save; you can seed it manually at any time.
 - The **correction feature is fully local** — no cloud, no accounts. A
   contextual LLM tier that rewrites for meaning is planned for a future
   release.

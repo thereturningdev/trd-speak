@@ -166,10 +166,10 @@ Next time you say the same thing, it applies the correction automatically.
 
 **Managing what it has learned:**
 
-- Menu bar icon → **Learned words**: lists every learned rule. Click one to remove it.
-- Menu bar icon → **Learned words** → **Open dictionary file…**: reveals the JSON file you can inspect or hand-edit.
+- Menu bar icon → **Learned Words** (a submenu): lists every learned rule. Click one to remove it.
+- Menu bar icon → **Open Dictionary File…** (a separate item, not inside Learned Words): reveals the JSON file in Finder so you can inspect or hand-edit it.
 
-**The dictionary file** lives at `~/Library/Application Support/TRD Speak[ Dev]/dictionary.json` and survives reinstall. You can also seed it manually — see `dictionary.json.example` in the repo for the format (a `vocabulary` list and a `replacements` list).
+**The dictionary file** lives at `~/Library/Application Support/TRD Speak[ Dev]/dictionary.json` and survives reinstall. You can also seed it manually — see `dictionary.json.example` in the repo for the format: a `vocabulary` list and a `replacements` list. Each replacement has `from` and `to` (required), plus optional `case_sensitive` (default `false`) and `whole_word` (default `true`; set `false` to match inside larger words). The `learned` and `ts` fields are added automatically by the app for rules it learns — you don't write those.
 
 **Change the shortcut:** menu bar icon → **Configuration…** → click the Correction field, press the combo you want, Save.
 
