@@ -18,8 +18,10 @@ def test_valid_file_parses_with_defaults(tmp_path):
     d = load_dictionary(p)
     assert d.vocabulary == ["GitHub", "Diotalevi"]
     r0, r1 = d.replacements
-    assert (r0.from_, r0.to, r0.case_sensitive, r0.whole_word, r0.learned) == \
-           ("fast whisper", "faster-whisper", False, True, False)
+    assert (
+        (r0.from_, r0.to, r0.case_sensitive, r0.whole_word, r0.learned)
+        == ("fast whisper", "faster-whisper", False, True, False)
+    )
     assert (r1.from_, r1.to, r1.learned, r1.ts) == ("diotaleavy", "Diotalevi", True, "2026-06-25T10:00:00")
 
 def test_malformed_json_raises(tmp_path):

@@ -52,6 +52,10 @@ class TextCorrector:
         def repl(m: re.Match) -> str:
             rule = self._rules[int(m.lastgroup[1:])]
             matched = m.group()
+            # Multi-word rules are emitted verbatim: mirroring the case of a
+            # multi-word phrase is ambiguous (which word's casing wins?) and
+            # rarely useful — brand names with spaces (e.g. "faster-whisper")
+            # have deliberate casing already baked into rule.to.
             if not rule.case_sensitive and " " not in rule.from_:
                 return _apply_case(matched, rule.to)
             return rule.to

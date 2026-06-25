@@ -26,4 +26,11 @@ def _common() -> frozenset[str]:
 
 
 def is_common(word: str) -> bool:
+    """Return True if *word* is a common English word.
+
+    A True result means the word IS common — something a user might legitimately
+    type — so it is NOT safe to auto-learn as a deterministic replacement rule
+    (doing so could silently rewrite intentional text).  Only words for which
+    this returns False are safe candidates for Tier-B rule creation.
+    """
     return word.lower() in _common()

@@ -9,7 +9,7 @@ from flow import engine_state, paths, permissions
 from flow.common_words import is_common
 from flow.config import Config
 from flow.corrector import TextCorrector
-from flow.dictionary import load_dictionary, save_dictionary
+from flow.dictionary import Dictionary, load_dictionary, save_dictionary
 from flow.engines import EngineUnavailable, make_transcriber
 from flow.history import History
 from flow.hotkey import HotkeyListener
@@ -42,7 +42,6 @@ class App:
             self.dictionary = load_dictionary(paths.DICTIONARY_PATH)
         except ValueError as exc:
             print(f"dictionary.json ignored ({exc}); using an empty dictionary.")
-            from flow.dictionary import Dictionary
             self.dictionary = Dictionary()
         self.corrector = TextCorrector(self.dictionary.replacements)
         self._switch_thread = None
@@ -273,6 +272,9 @@ class App:
                     x for x in self.dictionary.replacements
                     if x.from_.lower() != r.from_.lower()
                 ]
+                # Keep the set accurate so later rules in this batch
+                # don't think the slot is still occupied.
+                existing.discard(r.from_.lower())
             self.dictionary.replacements.append(r)
         have = {v.lower() for v in self.dictionary.vocabulary}
         for v in result.vocab:

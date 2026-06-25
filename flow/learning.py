@@ -17,6 +17,8 @@ from flow.dictionary import Replacement
 
 # Letters only (no digits/punctuation), allowing internal apostrophes/hyphens.
 _WORD = re.compile(r"[^\W\d_]+(?:['-][^\W\d_]+)*", re.UNICODE)
+# Skip single-letter edits (too noisy / likely punctuation artifacts) and
+# pathologically long tokens (likely garbage from the ASR decoder).
 _MIN_LEN, _MAX_LEN = 2, 30
 
 
@@ -53,5 +55,8 @@ def derive(
             res.vocab.append(right)
         if not is_common(wrong) and wrong.lower() not in seen_rule:
             seen_rule.add(wrong.lower())
+            # from_ deliberately preserves the ASR transcript's casing (e.g.
+            # "diotaleavy" rather than "Diotaleavy").  The corrector is
+            # case-insensitive by default, so this is harmless.
             res.rules.append(Replacement(from_=wrong, to=right, learned=True, ts=ts))
     return res

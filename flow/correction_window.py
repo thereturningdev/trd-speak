@@ -21,7 +21,6 @@ from __future__ import annotations
 
 import AppKit
 import Foundation
-import objc
 from Foundation import NSObject
 
 from flow import common_words, learning
@@ -112,7 +111,8 @@ class CorrectionWindowController:
     def open(self, original: str) -> None:
         """Suspend hotkeys, build the window, pre-fill the text, and show it."""
         self._original = original
-        self._saved = False
+        # _saved is already False from __init__; the controller is created fresh
+        # on every open() call (see open_correction_window), so no reset needed.
         AppKit.NSApplication.sharedApplication().activateIgnoringOtherApps_(True)
         self._app.suspend_hotkeys()
         if self._window is None:
@@ -261,8 +261,14 @@ class CorrectionWindowController:
     # -- Save / Cancel / close ------------------------------------------------
 
     def save(self) -> None:
-        """Read the current text, call app.learn, then close (resumes hotkeys
-        via _on_window_will_close with _saved=True bypassing resume)."""
+        """Read the current text, call app.learn, close the window, then resume
+        hotkeys directly.
+
+        Flow: learn -> set _saved=True -> close window -> resume_hotkeys().
+        _saved=True tells _on_window_will_close (the NSWindow close delegate) to
+        skip its own resume_hotkeys() call, so hotkeys are resumed exactly once
+        here in save(), not a second time via the close delegate.
+        """
         current_text = self._text_view.string() if self._text_view is not None else self._original
         self._app.learn(self._original, current_text)
         self._saved = True
