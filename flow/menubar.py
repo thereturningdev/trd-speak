@@ -408,17 +408,23 @@ class _Delegate(NSObject):
         menubar._rebuild_learned_submenu()
 
     def openDictionaryFile_(self, _sender) -> None:
-        """Open Dictionary File… row clicked: reveal the file (or its parent
-        dir) in Finder using NSWorkspace so we stay off the CLI."""
+        """Open Dictionary File… row clicked: reveal the file in Finder.
+
+        Uses activateFileViewerSelectingURLs:, NOT the legacy
+        selectFile:inFileViewerRootedAtPath:. The old call selected the file
+        but did not bring Finder forward, so clicking the row looked like it did
+        nothing. activateFileViewerSelectingURLs: activates Finder itself, takes
+        an NSArray of NSURL (a str silently no-ops), and works from a background
+        app. The menu action runs on the main thread, which it must (the API
+        crashes off-main on macOS 26). If the file does not exist yet, open the
+        parent folder instead so the row still does something useful.
+        """
+        ws = AppKit.NSWorkspace.sharedWorkspace()
         p = paths.DICTIONARY_PATH
         if p.exists():
-            AppKit.NSWorkspace.sharedWorkspace().selectFile_inFileViewerRootedAtPath_(
-                str(p), ""
-            )
+            ws.activateFileViewerSelectingURLs_([Foundation.NSURL.fileURLWithPath_(str(p))])
         else:
-            AppKit.NSWorkspace.sharedWorkspace().selectFile_inFileViewerRootedAtPath_(
-                str(p.parent), ""
-            )
+            ws.openURL_(Foundation.NSURL.fileURLWithPath_(str(p.parent)))
 
     def applicationShouldHandleReopen_hasVisibleWindows_(self, _app, _flag):
         # Dock icon clicked while running: open the status item's menu so
