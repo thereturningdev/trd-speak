@@ -15,8 +15,9 @@ from typing import Callable
 
 from flow.dictionary import Replacement
 
-# Letters only (no digits/punctuation), allowing internal apostrophes/hyphens.
-_WORD = re.compile(r"[^\W\d_]+(?:['-][^\W\d_]+)*", re.UNICODE)
+# Letters/digits, internal apostrophes/hyphens; underscore and other
+# punctuation split tokens.
+_WORD = re.compile(r"[^\W_]+(?:['-][^\W_]+)*", re.UNICODE)
 # Skip single-letter edits (too noisy / likely punctuation artifacts) and
 # pathologically long tokens (likely garbage from the ASR decoder).
 _MIN_LEN, _MAX_LEN = 2, 30
@@ -43,20 +44,22 @@ def derive(
     seen_rule: set[str] = set()
     seen_vocab: set[str] = set()
     for tag, i1, i2, j1, j2 in SequenceMatcher(None, a, b, autojunk=False).get_opcodes():
-        if tag != "replace" or (i2 - i1) != 1 or (j2 - j1) != 1:
-            continue
-        wrong, right = a[i1], b[j1]
-        if not (_MIN_LEN <= len(wrong) <= _MAX_LEN and _MIN_LEN <= len(right) <= _MAX_LEN):
-            continue
-        if wrong.lower() == right.lower():
-            continue
-        if right.lower() not in seen_vocab:
-            seen_vocab.add(right.lower())
-            res.vocab.append(right)
-        if not is_common(wrong) and wrong.lower() not in seen_rule:
-            seen_rule.add(wrong.lower())
-            # from_ deliberately preserves the ASR transcript's casing (e.g.
-            # "diotaleavy" rather than "Diotaleavy").  The corrector is
-            # case-insensitive by default, so this is harmless.
-            res.rules.append(Replacement(from_=wrong, to=right, learned=True, ts=ts))
+        if tag != "replace" or (i2 - i1) != (j2 - j1):
+            continue  # only equal-count replaces are word-for-word substitutions
+        for wrong, right in zip(a[i1:i2], b[j1:j2]):
+            if not (_MIN_LEN <= len(wrong) <= _MAX_LEN and _MIN_LEN <= len(right) <= _MAX_LEN):
+                continue
+            if not (any(c.isalpha() for c in wrong) and any(c.isalpha() for c in right)):
+                continue  # require a letter — don't learn pure-number "corrections"
+            if wrong.lower() == right.lower():
+                continue
+            if right.lower() not in seen_vocab:
+                seen_vocab.add(right.lower())
+                res.vocab.append(right)
+            if not is_common(wrong) and wrong.lower() not in seen_rule:
+                seen_rule.add(wrong.lower())
+                # from_ deliberately preserves the ASR transcript's casing (e.g.
+                # "diotaleavy" rather than "Diotaleavy").  The corrector is
+                # case-insensitive by default, so this is harmless.
+                res.rules.append(Replacement(from_=wrong, to=right, learned=True, ts=ts))
     return res

@@ -27,8 +27,11 @@ def _apply_case(matched: str, replacement: str) -> str:
 
 class TextCorrector:
     def __init__(self, replacements: list[Replacement]) -> None:
+        # Drop rules with an empty `from_`: an empty pattern matches the
+        # zero-width gap between every character and would corrupt the text.
+        rules = [r for r in replacements if r.from_]
         # Longest 'from' first so a multi-word rule wins over its prefix.
-        self._rules = sorted(replacements, key=lambda r: len(r.from_), reverse=True)
+        self._rules = sorted(rules, key=lambda r: len(r.from_), reverse=True)
         self._pattern = self._compile(self._rules)
 
     @staticmethod
