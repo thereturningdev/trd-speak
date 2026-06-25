@@ -259,28 +259,38 @@ class App:
             self.open_correction_window()
 
     def learn(self, original: str, edited: str) -> None:
-        """Derive safe rules + vocab from a correction, persist, and apply live."""
+        """Derive safe rules + vocab from a correction, persist, and apply live.
+
+        Save-first: build the candidate dictionary and persist it before
+        committing any in-memory change, so a failed write never diverges memory
+        from disk and never raises into the caller (which would strand the UI).
+        """
         if original == edited:
             return
         result = derive(original, edited, is_common, ts=datetime.now().isoformat())
         if not result.rules and not result.vocab:
             return
-        existing = {r.from_.lower() for r in self.dictionary.replacements}
+        new_reps = list(self.dictionary.replacements)
+        existing = {r.from_.lower() for r in new_reps}
         for r in result.rules:
             if r.from_.lower() in existing:
-                self.dictionary.replacements = [
-                    x for x in self.dictionary.replacements
-                    if x.from_.lower() != r.from_.lower()
-                ]
-                # Keep the set accurate so later rules in this batch
-                # don't think the slot is still occupied.
+                new_reps = [x for x in new_reps if x.from_.lower() != r.from_.lower()]
                 existing.discard(r.from_.lower())
-            self.dictionary.replacements.append(r)
-        have = {v.lower() for v in self.dictionary.vocabulary}
+            new_reps.append(r)
+            existing.add(r.from_.lower())
+        new_vocab = list(self.dictionary.vocabulary)
+        have = {v.lower() for v in new_vocab}
         for v in result.vocab:
             if v.lower() not in have:
-                self.dictionary.vocabulary.append(v)
-        save_dictionary(self.dictionary, paths.DICTIONARY_PATH)
+                new_vocab.append(v)
+                have.add(v.lower())
+        candidate = Dictionary(vocabulary=new_vocab, replacements=new_reps)
+        try:
+            save_dictionary(candidate, paths.DICTIONARY_PATH)
+        except Exception as exc:
+            print(f"Could not save learned correction ({exc}); nothing learned.")
+            return
+        self.dictionary = candidate
         self.corrector = TextCorrector(self.dictionary.replacements)
         if self.on_learned is not None:
             self.on_learned()

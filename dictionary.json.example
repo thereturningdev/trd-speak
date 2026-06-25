@@ -4,6 +4,6 @@
     { "from": "fast whisper", "to": "faster-whisper" },
     { "from": "see translate", "to": "CTranslate2" },
     { "from": "lo cal flow", "to": "LocalFlow", "case_sensitive": true },
-    { "from": "ml", "to": "ML", "whole_word": false }
+    { "from": "kubernetes", "to": "Kubernetes", "whole_word": false }
   ]
 }

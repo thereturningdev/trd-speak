@@ -34,6 +34,25 @@ def test_correction_is_learned_and_applied_next_time(monkeypatch, tmp_path):
     assert pasted == ["meet Diotalevi "]
 
 
+def test_learn_does_not_raise_or_mutate_when_save_fails(monkeypatch, tmp_path):
+    import flow.app as app_mod
+    from flow.config import Config
+    monkeypatch.setattr(app_mod.paths, "DICTATIONS_PATH", tmp_path / "d.json")
+    monkeypatch.setattr(app_mod.paths, "DICTIONARY_PATH", tmp_path / "dict.json")
+    monkeypatch.setattr(app_mod.HotkeyListener, "start", lambda self: None)
+    monkeypatch.setattr(app_mod.HotkeyListener, "stop", lambda self: None)
+    monkeypatch.setattr(app_mod, "make_transcriber", lambda *a, **k: object())
+    app = app_mod.App(Config())
+    def boom(*a, **k):
+        raise OSError("disk full")
+    monkeypatch.setattr(app_mod, "save_dictionary", boom)
+    before_reps = list(app.dictionary.replacements)
+    before_vocab = list(app.dictionary.vocabulary)
+    app.learn("call diotaleavy", "call Diotalevi")  # must NOT raise
+    assert app.dictionary.replacements == before_reps   # no mutation on failed save
+    assert app.dictionary.vocabulary == before_vocab
+
+
 def test_correction_hotkey_participates_in_suspend_resume(monkeypatch, tmp_path):
     import flow.app as app_mod
     from flow.config import Config

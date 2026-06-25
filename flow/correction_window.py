@@ -25,8 +25,6 @@ from Foundation import NSObject
 
 from flow import common_words, learning
 
-_ESC_KEYCODE = 53
-
 
 def open_correction_window(app) -> None:
     """Entry point: called by the menubar (or correction tap) on the main thread.
@@ -264,17 +262,23 @@ class CorrectionWindowController:
         """Read the current text, call app.learn, close the window, then resume
         hotkeys directly.
 
-        Flow: learn -> set _saved=True -> close window -> resume_hotkeys().
+        Flow: learn -> (finally) set _saved=True -> close window -> resume_hotkeys().
         _saved=True tells _on_window_will_close (the NSWindow close delegate) to
         skip its own resume_hotkeys() call, so hotkeys are resumed exactly once
         here in save(), not a second time via the close delegate.
+
+        The close and resume_hotkeys() calls are in a finally block so that a
+        learn failure (e.g. failed disk write) can never strand the hotkeys or
+        leave the window open.
         """
         current_text = self._text_view.string() if self._text_view is not None else self._original
-        self._app.learn(self._original, current_text)
-        self._saved = True
-        self._window.close()
-        # Resume hotkeys now that learning is done (saved path).
-        self._app.resume_hotkeys()
+        try:
+            self._app.learn(self._original, current_text)
+        finally:
+            self._saved = True
+            self._window.close()
+            # Resume hotkeys now that learning is done (saved path).
+            self._app.resume_hotkeys()
 
     def cancel(self) -> None:
         """Discard the edit; the close handler resumes the taps."""
