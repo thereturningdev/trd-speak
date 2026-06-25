@@ -68,7 +68,7 @@ def test_set_hotkeys_calls_stop_then_start_on_all_three(app, monkeypatch):
     assert {sid for _, sid in starts} == new_ids
 
 
-def test_suspend_hotkeys_stops_both(app, monkeypatch):
+def test_suspend_hotkeys_stops_all_three(app, monkeypatch):
     stopped = []
     monkeypatch.setattr(
         app_mod.HotkeyListener, "stop", lambda self: stopped.append(id(self))
@@ -78,20 +78,24 @@ def test_suspend_hotkeys_stops_both(app, monkeypatch):
 
     assert id(app.hotkey) in stopped
     assert id(app.repaste_hotkey) in stopped
+    assert id(app.correction_hotkey) in stopped
 
 
-def test_resume_hotkeys_starts_both(app, monkeypatch):
+def test_resume_hotkeys_starts_all_three(app, monkeypatch):
     started = []
     monkeypatch.setattr(
         app_mod.HotkeyListener, "start", lambda self: started.append(id(self))
     )
     old_dictate = app.hotkey
     old_repaste = app.repaste_hotkey
+    old_correct = app.correction_hotkey
 
     app.resume_hotkeys()
 
     assert id(app.hotkey) in started
     assert id(app.repaste_hotkey) in started
+    assert id(app.correction_hotkey) in started
     # Resume does NOT rebuild — the listener objects are unchanged.
     assert app.hotkey is old_dictate
     assert app.repaste_hotkey is old_repaste
+    assert app.correction_hotkey is old_correct

@@ -33,10 +33,13 @@ def test_resolve_prefers_valid_saved_combos(tmp_path):
 
 def test_resolve_falls_back_per_combo_when_missing(tmp_path):
     p = tmp_path / "hotkeys.json"
-    p.write_text('{"dictate": ["cmd", "alt"]}')
+    # A dictate value distinct from every Config() default, so the dictate
+    # combo and the fallback correct combo (["cmd", "alt"]) are clearly
+    # different rather than coincidentally equal.
+    p.write_text('{"dictate": ["cmd", "shift"]}')
     # dictate from the file, repaste and correct from config defaults.
     assert hotkey_state.resolve(Config(), path=p) == (
-        ["cmd", "alt"], ["cmd", "ctrl"], ["cmd", "alt"]
+        ["cmd", "shift"], ["cmd", "ctrl"], ["cmd", "alt"]
     )
 
 
