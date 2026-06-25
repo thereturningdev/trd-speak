@@ -91,6 +91,28 @@ its own. And you can revoke a permission at any time; the icon goes back to
   you can change the dictate and re-paste shortcuts without editing
   `config.toml`: click a field, *press* the combo you want, and Save. The new
   shortcut applies immediately — no restart — and persists across launches.
+- **Correct & learn** (default `cmd+alt`): after a dictation, tap this shortcut
+  to open a small editor showing your last dictation. Edit the text as you
+  intended it — then click Save. The app learns from the diff: any word you
+  consistently replace becomes a silent rewrite rule applied to all future
+  dictations. Common homophones (e.g. cloud↔Claude) are added to the
+  vocabulary for acoustic biasing instead of hard rewrite rules, so real uses
+  of the common word are not corrupted. Learned rules accumulate silently;
+  the shortcut is configurable in **Configuration…** alongside the dictation
+  and re-paste shortcuts.
+- **Learned words** (menu submenu) lists every rule the app has learned. You
+  can remove individual rules from here; **"Open dictionary file…"** reveals
+  the underlying JSON so you can inspect or hand-edit it.
+- The **dictionary file** lives at
+  `~/Library/Application Support/TRD Speak[ Dev]/dictionary.json` and
+  survives reinstall. It contains two sections: `vocabulary` (proper nouns and
+  technical terms that bias transcription) and `replacements` (from→to rewrite
+  rules, each with an optional `case_sensitive` flag). See
+  `dictionary.json.example` in the repo for the format. The file is created
+  on first save; you can seed it manually at any time.
+- The **correction feature is fully local** — no cloud, no accounts. A
+  contextual LLM tier that rewrites for meaning is planned for a future
+  release.
 - The menu always ends with **Open Log** and **Quit TRD Speak**.
 - The **Dock icon** is visible while the app runs; clicking it opens the
   menu bar menu, so it always leads straight to the controls.
@@ -138,6 +160,7 @@ apply changes.
 | --- | --- | --- |
 | `hotkey.keys` | `["ctrl", "shift"]` | 1–3 keys that must ALL be held to record; releasing any one stops and transcribes. |
 | `repaste.keys` | `["cmd", "ctrl"]` | 1–3 keys for the re-paste shortcut; tap them (no other key) to re-insert your last dictation into the focused window. Same key names as `hotkey.keys`; must not be a subset of (or superset of) `hotkey.keys`. |
+| `correct.keys` | `["cmd", "alt"]` | 1–3 keys for the correction shortcut; tap them (no other key) to open the correction editor for your last dictation. Configurable in **Configuration…** without editing this file. |
 | `engine.name` | `"whisper"` | Transcription engine. Currently only `whisper` (faster-whisper) is available. |
 | `whisper.model` | `"base.en"` | faster-whisper model: `tiny.en`, `base.en`, `small.en`, `medium.en`, … |
 | `whisper.compute_type` | `"int8"` | Quantization for CPU inference; `int8` is fastest and lightest. |

@@ -141,7 +141,37 @@ TRD Speak.
 | See what it's doing | menu bar icon → **Open Log** |
 | Recover a lost dictation | menu bar icon → **Recent Dictations** → click an entry to copy it, then paste into the right window |
 | Re-paste it into the right window | switch to the right window and **tap Cmd+Ctrl** (press and release, nothing else) to insert your most recent dictation directly |
+| Correct a dictation and teach the app | **tap Cmd+Alt** right after dictating → edit the text → Save (the app learns the correction for next time) |
+| Review or remove learned rules | menu bar icon → **Learned words** |
 | Change a shortcut | menu bar icon → **Configuration…** → click a field, press the combo, Save (applies immediately) |
+
+## Teaching TRD Speak your words (optional)
+
+TRD Speak can learn from your corrections — no cloud, no accounts.
+
+**Correcting a dictation:**
+
+1. After a dictation lands, **tap Cmd+Alt** (or your configured correction shortcut).
+2. A small editor opens with the text that was just transcribed. Edit it to what you meant.
+3. Click **Save**. The app compares your edit to the original and records what changed.
+
+Next time you say the same thing, it applies the correction automatically.
+
+**How it learns:**
+
+- Words you consistently replace (e.g. "fast whisper" → "faster-whisper") become silent rewrite rules.
+- Proper nouns and technical terms (e.g. "Diotalevi", "CTranslate2") are added to the vocabulary so Whisper recognises them better.
+- Common-word homophones (e.g. cloud↔Claude) get vocabulary biasing, not hard rewrites — so dictating "it's cloudy today" still works.
+- The correction is **learn-only**: it teaches future dictations; it does not re-paste the current text.
+
+**Managing what it has learned:**
+
+- Menu bar icon → **Learned words**: lists every learned rule. Click one to remove it.
+- Menu bar icon → **Learned words** → **Open dictionary file…**: reveals the JSON file you can inspect or hand-edit.
+
+**The dictionary file** lives at `~/Library/Application Support/TRD Speak[ Dev]/dictionary.json` and survives reinstall. You can also seed it manually — see `dictionary.json.example` in the repo for the format (a `vocabulary` list and a `replacements` list).
+
+**Change the shortcut:** menu bar icon → **Configuration…** → click the Correction field, press the combo you want, Save.
 
 ## If something doesn't work
 

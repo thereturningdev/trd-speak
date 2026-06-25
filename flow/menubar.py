@@ -848,6 +848,10 @@ def run(config: Config) -> None:
     snap = _snapshot_inprocess()
     ui.update_permissions(snap)
     print(_status_line(snap))
+    d = logic.dictionary
+    learned = sum(1 for r in d.replacements if r.learned)
+    print(f"dictionary: {len(d.replacements)} replacements ({learned} learned), "
+          f"{len(d.vocabulary)} vocabulary terms")
 
     state = {
         "booting": False,  # boot thread launched and still running

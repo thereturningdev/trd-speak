@@ -1,0 +1,8 @@
+{
+  "vocabulary": ["TRD Speak", "faster-whisper", "Diotalevi", "CTranslate2", "GitHub", "Claude"],
+  "replacements": [
+    { "from": "fast whisper", "to": "faster-whisper" },
+    { "from": "see translate", "to": "CTranslate2" },
+    { "from": "lo cal flow", "to": "LocalFlow", "case_sensitive": true }
+  ]
+}

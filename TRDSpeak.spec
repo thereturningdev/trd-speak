@@ -23,6 +23,10 @@ else:
         f"Missing {_MODEL_DIR}. Run: .venv/bin/python scripts/fetch_model.py"
     )
 
+# Common-words guardrail list: loaded at runtime by flow/common_words.py via
+# Path(__file__).resolve().parent / "data" / "common_words.txt".
+datas += [('flow/data/common_words.txt', 'flow/data')]
+
 # Heavy / native-dependency packages — pull their dylibs, data files, and
 # submodules so the frozen app needs nothing from the build machine.
 for pkg in (
