@@ -42,7 +42,15 @@ import AppKit
 import Foundation
 from Foundation import NSObject
 
-from flow import __version__, engine_state, hotkey_state, paster, paths, permissions
+from flow import (
+    __version__,
+    engine_state,
+    hotkey_state,
+    paster,
+    paths,
+    permissions,
+    secure_input,
+)
 from flow.app import App
 from flow.config import Config
 from flow.correction_window import open_correction_window
@@ -59,6 +67,7 @@ _STATE_ICONS = {
     "processing": "✍️",
     "loading": "⏳",
     "permissions": "⚠️",
+    "secure_input": "🔒",
 }
 
 _TOTAL = len(permissions.PERMISSIONS)
@@ -496,6 +505,8 @@ class MenuBar:
         self._mic_status = ""
         self._restart_needed = False
         self._active_engine = ""
+        self._secure_input_active = False
+        self._secure_input_blocker: str | None = None
 
         self._item = AppKit.NSStatusBar.systemStatusBar().statusItemWithLength_(
             AppKit.NSVariableStatusItemLength
@@ -523,6 +534,20 @@ class MenuBar:
         self._hotkey_warning.setEnabled_(False)
         self._hotkey_warning.setHidden_(True)
         menu.addItem_(self._hotkey_warning)
+
+        # Secure Keyboard Entry indication (issue #25): shown while ANY
+        # process has Secure Input on system-wide — macOS then blocks the
+        # keyboard tap from receiving events, which otherwise looks exactly
+        # like a dead/misconfigured tap. Independent of every other state:
+        # it can flip on mid-session while the app is fully Ready. A
+        # disabled info row (menu rows are the guaranteed channel on this
+        # machine — notifications are unreliable, see the module docstring).
+        self._secure_input_row = AppKit.NSMenuItem.alloc().initWithTitle_action_keyEquivalent_(
+            "", None, ""
+        )
+        self._secure_input_row.setEnabled_(False)
+        self._secure_input_row.setHidden_(True)
+        menu.addItem_(self._secure_input_row)
 
         menu.addItem_(AppKit.NSMenuItem.separatorItem())
 
@@ -724,6 +749,15 @@ class MenuBar:
         self._failed_hotkey_labels = tuple(labels)
         _on_main(self._render)
 
+    def update_secure_input(self, active: bool, blocker: str | None) -> None:
+        """Thread-safe: show/clear the "Secure Input is on" row and switch to
+        the distinct 🔒 icon while it's active (issue #25). `blocker` is the
+        resolved culprit app name, or None/generic when it could not be
+        resolved. Wired to the 2 s poll's secure-input check."""
+        self._secure_input_active = bool(active)
+        self._secure_input_blocker = blocker
+        _on_main(self._render)
+
     def update_combo(self, dictate_keys: list[str], repaste_keys: list[str]) -> None:
         """Refresh the header's dictate combo ("Ready — hold … to dictate")
         after a shortcut change. Re-renders on the main thread.
@@ -751,7 +785,7 @@ class MenuBar:
         # A revocation during the restart-offer brings the step UI back.
         restart = self._restart_needed and not missing
         if restart:
-            self._item.button().setTitle_(_STATE_ICONS["permissions"])
+            icon = _STATE_ICONS["permissions"]
             self._header.setTitle_("Setup complete — restart TRD Speak to finish")
         elif missing:
             current = next(
@@ -760,7 +794,7 @@ class MenuBar:
             step_no = (
                 [p.key for p in permissions.PERMISSIONS].index(current.key) + 1
             )
-            self._item.button().setTitle_(_STATE_ICONS["permissions"])
+            icon = _STATE_ICONS["permissions"]
             self._header.setTitle_(
                 f"Setup — step {step_no} of {_TOTAL}: {current.name}"
             )
@@ -772,12 +806,17 @@ class MenuBar:
                 "processing": "Transcribing…",
                 "loading": "Switching engine…",
             }
-            self._item.button().setTitle_(
-                _STATE_ICONS.get(self._app_state, _STATE_ICONS["ready"])
-            )
+            icon = _STATE_ICONS.get(self._app_state, _STATE_ICONS["ready"])
             self._header.setTitle_(
                 texts.get(self._app_state, self._app_detail or self._app_state)
             )
+        # Secure Input overrides the icon LAST and unconditionally: it is
+        # orthogonal to onboarding/restart (macOS can enable it at any time,
+        # even mid-onboarding) and is the most acute "shortcuts are dead
+        # right now" signal, so it always wins the single icon slot.
+        if self._secure_input_active:
+            icon = _STATE_ICONS["secure_input"]
+        self._item.button().setTitle_(icon)
         # Shortcuts-degraded row: independent of the permission/restart states
         # (a start() failure can happen in the fully-granted Ready state, which
         # is exactly when it must be visible). The watchdog clears it via
@@ -788,6 +827,16 @@ class MenuBar:
                 "⚠️ Shortcuts not working: " + ", ".join(failed) + " — retrying…"
             )
         self._hotkey_warning.setHidden_(not failed)
+        # Secure Input row: same independent-of-everything-else visibility
+        # rule as the degraded-shortcuts row above (issue #25). Both rows can
+        # be visible at once — they are separate failure signals and each
+        # clears itself independently.
+        if self._secure_input_active:
+            blocker = self._secure_input_blocker or secure_input.GENERIC_BLOCKER
+            self._secure_input_row.setTitle_(
+                f"⚠️ Secure Input is on — shortcuts are paused by macOS ({blocker})"
+            )
+        self._secure_input_row.setHidden_(not self._secure_input_active)
         self._restart_item.setHidden_(not restart)
         for step_no, perm in enumerate(permissions.PERMISSIONS, 1):
             item = self._perm_items[perm.key]
@@ -840,6 +889,64 @@ class MenuBar:
             )
             item.setState_(on)
             item.setEnabled_(ready)
+
+
+def _update_secure_input_state(state: dict, ui: "MenuBar") -> None:
+    """One poll tick's Secure Keyboard Entry check (issue #25).
+
+    `state` must carry "secure_input_active" (bool) and "secure_input_blocker"
+    (str | None). The on/off TRANSITION is logged (not every 2 s tick) — a
+    "shortcuts died at 14:32" report stays diagnosable without being drowned
+    in repeats. The blocker name, however, is RE-RESOLVED every tick while
+    active (not just at the ON transition): the process responsible can
+    change while Secure Input stays continuously on (e.g. Terminal quits and
+    a different app/loginwindow takes over the flag), and the row must track
+    that instead of freezing on whoever triggered the first ON. Always calls
+    ui.update_secure_input() with the current state so the row/icon reflect
+    reality even on the first tick after construction.
+
+    Deliberately does NOT touch the tap watchdog: IsSecureEventInputEnabled()
+    being true does not disable the tap (CGEventTapIsEnabled stays true — the
+    OS just stops delivering events to it), so
+    EventTapHub.watchdog_tick()/flow.menubar.reenable_disabled_taps() never
+    see a reason to recreate anything while it's on — see the module-level
+    note in flow/event_tap.py's heartbeat section. Nothing to guard here.
+
+    Never raises: a failed is_enabled() or describe_culprit() call leaves the
+    previous state exactly as it was (no flapping/crashing on a transient
+    ctypes or NSRunningApplication error) rather than crashing the poll.
+    describe_culprit() already guards itself, but this call site guards it
+    too — defense in depth, the same rule this file follows everywhere a
+    worker-thread/timer callback must never propagate an exception into the
+    run loop.
+    """
+    try:
+        active = secure_input.is_enabled()
+    except Exception as exc:  # defense in depth; is_enabled() itself should
+        print(f"Secure Input check failed: {exc}")  # never raise, but the
+        active = state["secure_input_active"]  # poll must survive regardless.
+
+    if active:
+        try:
+            blocker = secure_input.describe_culprit()
+        except Exception as exc:  # defense in depth; describe_culprit()
+            print(f"Secure Input culprit resolution failed: {exc}")  # should
+            blocker = state["secure_input_blocker"] or secure_input.GENERIC_BLOCKER
+    else:
+        blocker = None
+
+    if active != state["secure_input_active"]:
+        if active:
+            print(f"Secure Keyboard Entry turned ON (blocked by {blocker}) — "
+                  "the keyboard shortcut tap is paused by macOS until it "
+                  "turns off.")
+        else:
+            print("Secure Keyboard Entry turned off — the keyboard shortcut "
+                  "tap resumes.")
+        state["secure_input_active"] = active
+
+    state["secure_input_blocker"] = blocker
+    ui.update_secure_input(state["secure_input_active"], state["secure_input_blocker"])
 
 
 def reenable_disabled_taps(logic) -> list[str]:
@@ -930,6 +1037,8 @@ def run(config: Config) -> None:
         "polling": False,
         "timer_fires": 0,
         "post_ok": bool(snap["post"]),
+        "secure_input_active": False,
+        "secure_input_blocker": None,
     }
     # The paste guard must use the freshest known answer, not the in-process
     # preflight macOS caches at first call (a mid-session grant would
@@ -978,6 +1087,12 @@ def run(config: Config) -> None:
 
     def poll(_timer) -> None:
         state["timer_fires"] += 1
+        # Secure Keyboard Entry (issue #25): a cheap, permission-free ctypes
+        # call — checked every tick, never throttled with the fresh-snapshot
+        # helper-process check below — because a fully-permissioned, healthy
+        # tap goes silent while it's on, exactly like every other tap
+        # failure this watchdog fights, unless this is checked directly.
+        _update_secure_input_state(state, ui)
         # Event-tap watchdog: if macOS disabled the hotkey tap (a slow
         # callback trips its timeout), re-assert it. Runs every tick (before
         # the throttle below) so the hotkey recovers within ~2 s.

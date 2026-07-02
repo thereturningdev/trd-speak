@@ -304,6 +304,26 @@ def test_events_are_counted_even_while_muted(quartz, fake_center):
     assert hub.take_event_count() == 1
 
 
+def test_zero_events_on_an_enabled_tap_never_triggers_a_recreate(quartz, fake_center):
+    """Regression/finding for issue #25 (Secure Keyboard Entry): a healthy
+    tap that Secure Input is silently blackholing looks EXACTLY like this —
+    CGEventTapIsEnabled() stays True (macOS filters the event stream, it
+    does not disable the tap: no callback ever runs, so the timeout-disable
+    path that only fires from a SLOW callback can't trigger either), the
+    heartbeat counter stays at zero. take_event_count() is diagnostic-log
+    only (flow/menubar.py never wires it into a recreate decision) and
+    watchdog_tick() is driven purely by CGEventTapIsEnabled(), never by the
+    event count — so many ticks of silence on an enabled tap must produce
+    NO recreate. This is issue #25 step 5's "does this path already not
+    exist" question, pinned as a permanent regression guard."""
+    hub = _hub(quartz, fake_center, _Spy())
+    quartz["enabled"] = True
+    for _ in range(10):
+        assert hub.take_event_count() == 0
+        assert hub.watchdog_tick() is None
+    assert quartz["creates"] == 1  # never destroyed/recreated
+
+
 # ---------------------------------------------------------------------------
 # mute / unmute (replaces destroy-and-recreate on settings/correction windows)
 # ---------------------------------------------------------------------------
