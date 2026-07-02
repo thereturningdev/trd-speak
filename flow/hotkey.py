@@ -221,6 +221,12 @@ class HotkeyListener:
         # tap mode: set when a non-combo key is pressed during the hold; a
         # contaminated hold does not fire on_trigger when it is released.
         self._contaminated = False
+        # True while any modifier OUTSIDE the target set is physically down
+        # (from the last flagsChanged's absolute flags). Matching is EXACT:
+        # a combo that is merely a subset of what is held must not fire —
+        # otherwise ⌘⌃⇧4 starts a ctrl+shift dictation and ⌘⌃⌥ fires both
+        # the cmd+ctrl and cmd+alt tap combos (issue #21).
+        self._extra_mods_down = False
         # keycode -> token, restricted to the configured target keys.
         self._keycode_to_token: dict[int, str] = {}
         for token in self._targets:
@@ -314,6 +320,7 @@ class HotkeyListener:
         with self._cond:
             self._held.clear()
             self._active = False
+            self._extra_mods_down = False
             self._cond.notify_all()
 
     def ensure_enabled(self) -> bool:
@@ -443,12 +450,14 @@ class HotkeyListener:
     def _char_key_down(self, token: str, flags: int) -> None:
         """Fire on the keyDown of a chord's character key.
 
-        Gated on the required modifiers all being present in THIS event's
-        absolute flags (read fresh, never accumulated). Fires at most once per
-        hold; auto-repeat keyDowns are absorbed by the `_fired_this_hold` guard.
-        The hold is re-armed by _rearm_on_modifier_release (modifier flags
-        clearing) or _char_key_up — never by waiting on this key's own keyUp,
-        which macOS withholds while Command is held.
+        Gated on the held modifiers in THIS event's absolute flags (read
+        fresh, never accumulated) being EXACTLY the required set — an extra
+        modifier means a bigger chord (⌘⌃⇧P must not fire a ⌘⌃P chord).
+        Fires at most once per hold; auto-repeat keyDowns are absorbed by the
+        `_fired_this_hold` guard. The hold is re-armed by
+        _rearm_on_modifier_release (modifier flags clearing) or _char_key_up —
+        never by waiting on this key's own keyUp, which macOS withholds while
+        Command is held.
         """
         held_mods = modifier_tokens_from_flags(flags)
         fire = False
@@ -456,7 +465,7 @@ class HotkeyListener:
             self._keys_down.add(token)
             already = self._fired_this_hold
             if (
-                self._target_mods <= held_mods
+                self._target_mods == held_mods
                 and self._target_keys <= self._keys_down
                 and not self._fired_this_hold
             ):
@@ -516,9 +525,35 @@ class HotkeyListener:
         stays set while either is down and clears only when the last goes up —
         exactly the variant semantics, without per-keycode bookkeeping.
         Character keys (tracked by keyDown/keyUp) are deliberately untouched.
+
+        Modifiers OUTSIDE the target set are not tracked in _held, but their
+        presence (extra = flags mods - targets) gates matching: an extra
+        modifier contaminates an active tap hold or deactivates an active
+        hold-mode combo, and _press consults the stored flag so a combo that
+        completes UNDER an extra modifier never activates cleanly. The extra
+        check runs BEFORE stale target releases on purpose: a coalesced event
+        that simultaneously drops a target and introduces an extra (cmd+ctrl
+        flags jumping to cmd+alt) is ambiguous — the alt may have gone down
+        before the ctrl release — so it counts as contamination, never as a
+        clean release (a false fire pastes into the user's window; a missed
+        fire is just a retry). Once the extras clear, matching recovers on the
+        next fresh full hold — the current hold stays contaminated/deactivated
+        (per-hold semantics).
         """
-        present = modifier_tokens_from_flags(flags) & self._target_mods
+        all_mods = modifier_tokens_from_flags(flags)
+        present = all_mods & self._target_mods
+        extra = all_mods - self._target_mods
+        fire_deactivate = False
         with self._cond:
+            self._extra_mods_down = bool(extra)
+            if extra and self._active:
+                if self._mode == "tap":
+                    # Same as a stray character keyDown: the hold is spoiled.
+                    self._contaminated = True
+                else:
+                    # The user rolled into a bigger chord — stop the hold now.
+                    self._active = False
+                    fire_deactivate = True
             stale = [
                 (tok, kc)
                 for tok in self._held
@@ -526,16 +561,34 @@ class HotkeyListener:
                 for kc in list(self._held[tok])
             ]
             fresh = [tok for tok in present if tok not in self._held]
-        if self._debug and (fresh or stale):
+        if self._debug and (fresh or stale or extra):
             self._dbg(
-                f"reconcile: flags_mods={sorted(modifier_tokens_from_flags(flags))} "
-                f"present={sorted(present)} held={sorted(self._held)} "
+                f"reconcile: flags_mods={sorted(all_mods)} "
+                f"present={sorted(present)} extra={sorted(extra)} "
+                f"held={sorted(self._held)} "
                 f"press={fresh} release={[t for t, _ in stale]}"
             )
+        # Each step is individually guarded: a callback raising mid-loop (e.g.
+        # on_trigger during a coalesced release of both modifiers) must not
+        # abort the remaining releases — that strands a modifier in _held and
+        # wedges wait_all_released until an unrelated event self-heals it.
+        if fire_deactivate:
+            self._guarded(self._on_deactivate)
         for tok, kc in stale:
-            self._release(tok, kc)
+            self._guarded(lambda t=tok, k=kc: self._release(t, k))
         for tok in fresh:
-            self._press(tok, _keycodes_for_token(tok)[0])
+            self._guarded(lambda t=tok: self._press(t, _keycodes_for_token(t)[0]))
+
+    def _guarded(self, fn: Callable[[], None]) -> None:
+        """Run one reconcile step, logging (never propagating) an exception
+        escaping a user callback, so the rest of the reconcile still runs."""
+        try:
+            fn()
+        except Exception as exc:
+            print(
+                f"[{self._name}] reconcile callback error: {exc}\n"
+                f"{traceback.format_exc()}"
+            )
 
     def _press(self, token: str, keycode: int) -> None:
         fire_activate = False
@@ -550,11 +603,17 @@ class HotkeyListener:
                 and not self._keydown_fire
                 and self._held.keys() == self._targets
             ):
-                self._active = True
                 if self._mode == "tap":
-                    # A fresh full-hold starts clean; contamination is per-hold.
-                    self._contaminated = False
-                else:
+                    # A fresh full-hold starts clean; contamination is
+                    # per-hold. A hold completed UNDER an extra modifier
+                    # (e.g. cmd+ctrl finishing while alt is down) starts
+                    # contaminated instead, so it cannot fire on release.
+                    self._active = True
+                    self._contaminated = self._extra_mods_down
+                elif not self._extra_mods_down:
+                    # Hold mode activates only on the EXACT modifier set; a
+                    # bigger chord (⌘⌃⇧4 vs ctrl+shift) must not start it.
+                    self._active = True
                     fire_activate = True
         if fire_activate:
             self._on_activate()

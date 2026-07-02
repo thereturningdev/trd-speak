@@ -570,20 +570,25 @@ def test_charchord_wrong_then_right_char(monkeypatch):
 
 def test_modonly_simultaneous_swap_one_mod_for_another(monkeypatch):
     """One event drops cmd and adds shift simultaneously for a cmd+ctrl combo:
-    flags go from cmd|ctrl to ctrl|shift. cmd must be released (combo breaks ->
-    fires once), shift is irrelevant. Reconcile must handle a stale-release AND a
-    fresh-press of a non-target in the same event without firing twice or
-    stalling."""
+    flags go from cmd|ctrl to ctrl|shift. The event is ambiguous — shift may
+    have gone down before cmd went up — so since issue #21 it contaminates the
+    hold and must NOT fire. Reconcile must still handle the stale-release and
+    the extra modifier in one event without stalling or corrupting state."""
     l, fired = _tap(["cmd", "ctrl"])
     d = _Driver(l, monkeypatch)
     d.modifier(_CMD_L, _CMD)
     d.modifier(_CTRL_L, _CMD | _CTRL)          # combo held
     d.modifier(_SHIFT_L, _CTRL | _SHIFT)       # cmd gone, shift added, ctrl stays
-    assert fired == [1]
+    assert fired == []                          # ambiguous -> contaminated
     d.modifier(_CTRL_L, _SHIFT)
     d.modifier(_SHIFT_L, 0)
-    assert fired == [1]
+    assert fired == []
     assert l._held == {}
+    # A fresh exact hold afterwards fires — contamination was per-hold.
+    d.modifier(_CMD_L, _CMD)
+    d.modifier(_CTRL_L, _CMD | _CTRL)
+    d.modifier(_CMD_L, 0)
+    assert fired == [1]
 
 
 def test_hold_mode_char_chord_activates_and_deactivates(monkeypatch):
@@ -654,21 +659,27 @@ def test_alt_only_named_key_chord_alt_space(monkeypatch):
     assert fired == [1, 1]
 
 
-def test_reconcile_ignores_nontarget_modifiers_in_flags(monkeypatch):
+def test_reconcile_tracks_only_target_modifiers_but_extras_contaminate(monkeypatch):
     """For a cmd+ctrl combo, a flagsChanged whose flags also carry shift/alt
     bits must NOT add shift/alt to _held (only target modifiers are tracked).
-    The combo still fires on clean release."""
+    Since issue #21, those extra modifiers DO contaminate the hold: matching
+    is exact, so a combo held under extra modifiers must not fire."""
     l, fired = _tap(["cmd", "ctrl"])
     d = _Driver(l, monkeypatch)
     d.modifier(_CMD_L, _CMD | _SHIFT | _ALT)        # cmd + noise
     assert set(l._held) <= {"cmd"}
     d.modifier(_CTRL_L, _CMD | _CTRL | _SHIFT | _ALT)
     assert set(l._held) == {"cmd", "ctrl"}          # noise not tracked
-    d.modifier(_CMD_L, _CTRL | _SHIFT | _ALT)        # cmd up -> fires
+    d.modifier(_CMD_L, _CTRL | _SHIFT | _ALT)        # cmd up
     d.modifier(_CTRL_L, _SHIFT | _ALT)
-    assert fired == [1]
+    assert fired == []                               # contaminated by noise
     # remaining noise bits don't keep the combo "held".
     assert "shift" not in l._held and "alt" not in l._held
+    d.modifier(0, 0)                                 # noise clears
+    d.modifier(_CMD_L, _CMD)                         # fresh exact hold fires
+    d.modifier(_CTRL_L, _CMD | _CTRL)
+    d.modifier(_CMD_L, 0)
+    assert fired == [1]
 
 
 def test_modonly_flags_unchanged_event_is_idempotent(monkeypatch):
@@ -685,15 +696,15 @@ def test_modonly_flags_unchanged_event_is_idempotent(monkeypatch):
     assert fired == [1]
 
 
-def test_charchord_modifier_noise_does_not_block_fire(monkeypatch):
-    """cmd+ctrl+p where the P keyDown's flags also include shift noise: the gate
-    is subset, so the extra shift must not block firing."""
+def test_charchord_modifier_noise_blocks_fire(monkeypatch):
+    """cmd+ctrl+p where the P keyDown's flags also include shift: the gate is
+    exact equality (issue #21), so ⌘⌃⇧P must NOT fire the ⌘⌃P chord."""
     l, fired = _tap(["cmd", "ctrl", "p"])
     d = _Driver(l, monkeypatch)
     d.modifier(_CMD_L, _CMD)
     d.modifier(_CTRL_L, _CMD | _CTRL | _SHIFT)
     d.key_down(_P, flags=_CMD | _CTRL | _SHIFT)
-    assert fired == [1]
+    assert fired == []
 
 
 def test_callback_swallows_trigger_exception_and_keeps_state(monkeypatch):

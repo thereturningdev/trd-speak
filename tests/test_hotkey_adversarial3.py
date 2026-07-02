@@ -173,10 +173,10 @@ def test_cmdalt_rapid_retrigger_fires_each_time(monkeypatch):
     assert fired == [1, 1, 1]
 
 
-def test_cmdalt_foreign_modifier_does_not_contaminate(monkeypatch):
-    """Holding cmd+alt and additionally tapping shift (a modifier, not a
-    character key) should NOT contaminate — contamination is for non-combo
-    *character* keys. The clean release should still fire."""
+def test_cmdalt_foreign_modifier_contaminates(monkeypatch):
+    """Holding cmd+alt and additionally tapping shift (an extra modifier)
+    contaminates the hold (issue #21) — the user rolled into a bigger chord,
+    so releasing must NOT fire even though shift left before the release."""
     d, fired = _tap(["cmd", "alt"], monkeypatch)
     d.modifier(_CMD_L, _CMD)
     d.modifier(_ALT_L, _CMD | _ALT)
@@ -184,7 +184,7 @@ def test_cmdalt_foreign_modifier_does_not_contaminate(monkeypatch):
     d.modifier(_SHIFT_L, _CMD | _ALT)
     d.modifier(_ALT_L, _CMD)
     d.modifier(_CMD_L, 0)
-    assert fired == [1]
+    assert fired == []
 
 
 # ===========================================================================
@@ -284,16 +284,16 @@ def test_cmdctrlp_left_right_ctrl_variant(monkeypatch):
     assert fired == [1]
 
 
-def test_cmdctrlp_extra_foreign_modifier_in_flags_still_fires(monkeypatch):
+def test_cmdctrlp_extra_foreign_modifier_in_flags_blocks_fire(monkeypatch):
     """P's event carries cmd+ctrl PLUS shift (user also holding shift). The
-    required subset is present, so it should still fire (subset check, not
-    equality)."""
+    gate is exact equality (issue #21): ⌘⌃⇧P is a different chord and must
+    NOT fire the ⌘⌃P listener."""
     d, fired = _tap(["cmd", "ctrl", "p"], monkeypatch)
     d.modifier(_CMD_L, _CMD)
     d.modifier(_CTRL_L, _CMD | _CTRL)
     d.modifier(_SHIFT_L, _CMD | _CTRL | _SHIFT)
     d.key_down(_P, _CMD | _CTRL | _SHIFT)
-    assert fired == [1]
+    assert fired == []
 
 
 def test_cmdctrlp_dropped_ctrl_press_then_p(monkeypatch):
@@ -483,17 +483,18 @@ def test_cmdctrlp_modifier_release_during_hold_then_repress_no_double(monkeypatc
     assert fired == [1, 1]
 
 
-def test_tap_combo_alongside_foreign_held_modifier_fires(monkeypatch):
+def test_tap_combo_alongside_foreign_held_modifier_does_not_fire(monkeypatch):
     """cmd+alt held while an unrelated shift is also down the whole time.
-    reconcile only touches target modifiers; the foreign shift is ignored and a
-    clean release of cmd+alt still fires."""
+    Matching is exact (issue #21): the combo completed UNDER an extra
+    modifier, so it starts contaminated and its release must NOT fire —
+    this is exactly how ⌘⌃⌥ used to fire two tap combos at once."""
     d, fired = _tap(["cmd", "alt"], monkeypatch)
     d.modifier(_SHIFT_L, _SHIFT)               # foreign modifier down first
     d.modifier(_CMD_L, _SHIFT | _CMD)
-    d.modifier(_ALT_L, _SHIFT | _CMD | _ALT)   # combo active
+    d.modifier(_ALT_L, _SHIFT | _CMD | _ALT)   # subset held under shift
     d.modifier(_ALT_L, _SHIFT | _CMD)
-    d.modifier(_CMD_L, _SHIFT)                 # clean release of cmd+alt
-    assert fired == [1]
+    d.modifier(_CMD_L, _SHIFT)                 # release of cmd+alt
+    assert fired == []
 
 
 def test_tap_contamination_cleared_by_midhold_modifier_bounce(monkeypatch):
@@ -513,17 +514,19 @@ def test_tap_contamination_cleared_by_midhold_modifier_bounce(monkeypatch):
     assert fired == [1]
 
 
-def test_keydown_fire_no_rearm_when_only_foreign_modifier_drops(monkeypatch):
-    """cmd+ctrl+p fired with shift also held. Dropping only the foreign shift
-    leaves cmd+ctrl present, so the chord is NOT re-armed and an autorepeat
-    keyDown must not re-fire."""
+def test_keydown_fire_blocked_by_foreign_modifier_until_it_drops(monkeypatch):
+    """cmd+ctrl+p with shift ALSO held: the P keyDown must not fire (exact
+    modifier match, issue #21). Once the foreign shift drops — leaving exactly
+    cmd+ctrl — the next P keyDown (e.g. autorepeat) fires once."""
     d, fired = _tap(["cmd", "ctrl", "p"], monkeypatch)
     d.modifier(_SHIFT_L, _SHIFT)
     d.modifier(_CMD_L, _SHIFT | _CMD)
     d.modifier(_CTRL_L, _SHIFT | _CMD | _CTRL)
     d.key_down(_P, _SHIFT | _CMD | _CTRL)
-    assert fired == [1]
+    assert fired == []                  # bigger chord, must not fire
     d.modifier(_SHIFT_L, _CMD | _CTRL)  # foreign shift drops; cmd+ctrl remain
+    d.key_down(_P, _CMD | _CTRL)        # now exactly cmd+ctrl+p -> fires
+    assert fired == [1]
     d.key_down(_P, _CMD | _CTRL)        # autorepeat -> must NOT re-fire
     assert fired == [1]
 

@@ -138,13 +138,14 @@ def test_charchord_one_modifier_missing_in_keydown_flags(monkeypatch):
     assert fired == []
 
 
-def test_charchord_extra_unrelated_modifier_held_still_fires(monkeypatch):
-    """Holding an extra modifier (shift) beyond the required set does not block
-    firing: the gate is target_mods SUBSET held_mods, not equality."""
+def test_charchord_extra_unrelated_modifier_held_blocks_fire(monkeypatch):
+    """Holding an extra modifier (shift) beyond the required set blocks
+    firing: since issue #21 the gate is target_mods EQUALS held_mods, so
+    ⌘⌃⇧P is a different chord than ⌘⌃P and must not fire it."""
     l, fired = _tap_listener(["cmd", "ctrl", "p"])
     d = _Driver(l, monkeypatch)
     d.key_down(_P, flags=_CMD_MASK | _CTRL_MASK | _SHIFT_MASK)
-    assert fired == [1]
+    assert fired == []
 
 
 # ===========================================================================
@@ -391,12 +392,11 @@ def test_modonly_contamination_then_clean_hold_fires(monkeypatch):
     assert fired == [1]
 
 
-def test_modonly_extra_modifier_held_is_contamination_via_unmapped(monkeypatch):
-    """For Cmd+Ctrl combo, pressing Shift adds a modifier that arrives as a
-    flagsChanged for an UNMAPPED token. The current code only contaminates on
-    keyDown of an unmapped key, NOT on a flagsChanged for an extra modifier.
-    The screenshot key (Cmd+Ctrl+Shift+4) is cancelled by the '4' keyDown, not
-    by shift. Document that pure extra-modifier holds still fire."""
+def test_modonly_extra_modifier_contaminates_the_hold(monkeypatch):
+    """For a Cmd+Ctrl combo, Shift joining mid-hold is an EXTRA modifier and
+    contaminates the hold (issue #21) — exactly like a stray character
+    keyDown. Even though shift leaves before the release, the hold stays
+    contaminated and must not fire."""
     l, fired = _tap_listener(["cmd", "ctrl"])
     d = _Driver(l, monkeypatch)
     d.modifier(_CMD_L, _CMD_MASK)
@@ -405,8 +405,7 @@ def test_modonly_extra_modifier_held_is_contamination_via_unmapped(monkeypatch):
     d.modifier(_SHIFT_L, _CMD_MASK | _CTRL_MASK)                # shift up
     d.modifier(_CMD_L, _CTRL_MASK)
     d.modifier(_CTRL_L, 0)
-    # Cmd+Ctrl was held and released cleanly (shift is not a "key down" key).
-    assert fired == [1]
+    assert fired == []
 
 
 # ===========================================================================
