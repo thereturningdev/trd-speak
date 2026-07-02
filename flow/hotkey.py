@@ -127,6 +127,24 @@ def modifier_tokens_from_flags(flags: int) -> set[str]:
     return {token for token, mask in _MODIFIER_MASKS.items() if flags & mask}
 
 
+def modifiers_physically_down() -> bool:
+    """True if any modifier key (cmd/shift/alt/ctrl) is physically held right
+    now, per the OS's own combined session state.
+
+    CGEventSourceFlagsState reads the system's live flag state — independent
+    of any event tap's shadow bookkeeping, which can go stale on a missed
+    keyUp (see the class docstring's known v1 limitation). The paste paths use
+    this as the tie-breaker when wait_all_released() times out: a stale shadow
+    state self-heals (paste proceeds), genuinely held keys skip the paste.
+    Masked to the four modifier bits so caps lock / fn never count.
+    Needs no TCC permission.
+    """
+    flags = Quartz.CGEventSourceFlagsState(
+        Quartz.kCGEventSourceStateCombinedSessionState
+    )
+    return any(flags & mask for mask in _MODIFIER_MASKS.values())
+
+
 def validate_combo(
     keys: list[str],
     *,

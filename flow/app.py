@@ -12,7 +12,7 @@ from flow.corrector import TextCorrector
 from flow.dictionary import Dictionary, load_dictionary, save_dictionary
 from flow.engines import EngineUnavailable, make_transcriber
 from flow.history import History
-from flow.hotkey import HotkeyListener
+from flow.hotkey import HotkeyListener, modifiers_physically_down
 from flow.learning import derive
 from flow.paster import paste_text
 from flow.recorder import Recorder
@@ -174,6 +174,35 @@ class App:
     def _vocab_hint(self) -> str | None:
         return ", ".join(self.dictionary.vocabulary) or None
 
+    @staticmethod
+    def _released_or_stale(listener: HotkeyListener) -> bool:
+        """True when it is safe to synthesize Cmd+V: the listener confirms all
+        trigger keys are up, OR its wait timed out but the OS's live flag state
+        shows no modifier physically held (the shadow state was stale after a
+        missed keyUp — self-healing). False only when modifiers really are
+        down, in which case the paste must be skipped: a held Ctrl would turn
+        the synthesized paste into ⌘⌃V (issue #24).
+
+        Never raises: if the OS check itself fails, the paste is skipped —
+        keys may still be held, so posting blind is never an option — and the
+        failure is logged (the text stays recoverable from the history)."""
+        if listener.wait_all_released():
+            return True
+        try:
+            if modifiers_physically_down():
+                return False
+        except Exception as exc:
+            print(
+                f"Could not read the OS modifier state ({exc}) — "
+                "paste skipped rather than posted blind."
+            )
+            return False
+        print(
+            "Hotkey shadow state was stale (missed keyUp); the OS reports all "
+            "modifiers up — proceeding with the paste."
+        )
+        return True
+
     def _process(self) -> None:
         """Stop recording, transcribe, paste. Always returns to IDLE."""
         try:
@@ -200,8 +229,10 @@ class App:
                     )
                     return
                 # Cmd+V must never fire while a trigger key is still held
-                # (a held Ctrl would turn the paste into Ctrl+Cmd+V).
-                if not self.hotkey.wait_all_released():
+                # (a held Ctrl would turn the paste into Ctrl+Cmd+V). A stale
+                # shadow state must not permanently block pastes, so the OS's
+                # live flags break the tie on a wait timeout (issue #24).
+                if not self._released_or_stale(self.hotkey):
                     print(f"Trigger keys still held — paste skipped. Text was: {shown}")
                     return
                 # Trailing space so consecutive dictations don't run together.
@@ -236,8 +267,17 @@ class App:
             print(f"[{self._repaste_debug}] trigger received -> _do_repaste "
                   f"(state={self._state}); waiting for keys to release")
         # Wait for the combo to be fully released so the synthesized Cmd+V is a
-        # plain paste, not Cmd+<modifiers>+V.
-        self.repaste_hotkey.wait_all_released()
+        # plain paste, not Cmd+<modifiers>+V. Never paste blind on a timeout:
+        # if the OS confirms modifiers are physically held, the paste would
+        # arrive as ⌘⌃V and silently do the wrong thing (issue #24). The skip
+        # is surfaced in the log AND via notify (banners can be unreliable).
+        if not self._released_or_stale(self.repaste_hotkey):
+            print("Re-paste skipped — keys still held.")
+            try:  # best-effort UX: a broken notify backend must not kill the worker
+                self.notify("Re-paste skipped — keys still held.")
+            except Exception:
+                pass
+            return
         with self._lock:
             if self._state != IDLE:
                 self.notify("Finish the current dictation first.")
