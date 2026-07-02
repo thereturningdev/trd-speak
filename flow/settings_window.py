@@ -4,11 +4,11 @@ A programmatically-built NSWindow (no nib). NOT unit-tested — verified by
 import (`python -c "import flow.settings_window"`) plus manual run, consistent
 with flow.menubar already being un-unit-tested.
 
-The crux is recording a shortcut by *pressing* it. The global event taps are
-listen-only, so flow.app.App.suspend_hotkeys() stops all three for the window's
-whole lifetime; while open, a recorder field's local NSEvent monitor is the only
-listener active, so pressing a combo to record it never self-triggers a real
-dictation. Captured NSEvent keycodes/flags are mapped to canonical tokens via
+The crux is recording a shortcut by *pressing* it. The shared global event tap
+is listen-only, so flow.app.App.suspend_hotkeys() mutes it (hub-level; the tap
+itself keeps running — issue #20) for the window's whole lifetime; while open,
+a recorder field's local NSEvent monitor is the only combo listener, so
+pressing a combo to record it never self-triggers a real dictation. Captured NSEvent keycodes/flags are mapped to canonical tokens via
 flow.hotkey.token_for_keycode / modifier_tokens_from_flags (the same tables the
 live listener matches against). On Save the combos are validated, applied live
 (App.set_hotkeys), persisted (hotkey_state.save) and reflected in the menu

@@ -1,4 +1,6 @@
-"""Global push-to-talk hotkey listener built on a Quartz CGEventTap.
+"""Global push-to-talk hotkey listener: a combo-matching state machine fed by
+the shared flow.event_tap.EventTapHub (one hardened CGEventTap per process —
+issue #20; the tap parameters and their hard-won rationale live there).
 
 No pynput, no TIS/TSM: on macOS 26 the Text Input Services APIs that
 pynput's macOS backend calls from its listener thread assert main-thread
@@ -6,8 +8,8 @@ in any process that has initialized NSApplication and kill the process.
 This implementation identifies keys purely by virtual keycode and never
 translates keycodes to characters at runtime.
 
-The event tap source is added to the MAIN run loop (flow.menubar runs
-NSApp there), so tap callbacks fire on the main thread; start() itself
+The hub's tap source is added to the MAIN run loop (flow.menubar runs
+NSApp there), so _tap_callback fires on the main thread; start() itself
 may safely be called from any thread.
 
 Layout note: single-character hotkeys (e.g. "v") are matched against a
@@ -24,6 +26,8 @@ import traceback
 from typing import Callable
 
 import Quartz
+
+from flow.event_tap import EventTapHub
 
 _ALIASES = {"option": "alt", "command": "cmd"}
 
@@ -202,6 +206,7 @@ class HotkeyListener:
         on_trigger: Callable[[], None] | None = None,
         debug_label: str | None = None,
         name: str | None = None,
+        hub: EventTapHub | None = None,
     ) -> None:
         if not keys:
             raise ValueError("Hotkey keys list must not be empty")
@@ -256,117 +261,68 @@ class HotkeyListener:
         self._held: dict[str, set[int]] = {}
         self._active = False
         self._cond = threading.Condition()
-        # Python references to the tap machinery; if the callback (or the
-        # tap/source) is garbage-collected the process crashes.
-        self._tap = None
-        self._source = None
-        self._callback = None
-        # Liveness counter: how many events the tap has delivered since the
-        # last poll. Counts only THAT events arrive, never which keys.
-        self._event_count = 0
+        # The shared per-process tap hub (issue #20). App passes its single
+        # hub so all listeners share ONE CGEventTap; a listener constructed
+        # without one (tests, tools) gets a private hub.
+        self._hub = hub if hub is not None else EventTapHub()
+        self._registered = False
 
     def start(self) -> None:
-        """Create and enable the event tap on the main run loop (non-blocking).
-
-        Safe to call from a worker thread: the run loop source is attached
-        to CFRunLoopGetMain(), where flow.menubar runs NSApp.
+        """Register with the event-tap hub, creating the hub's single tap on
+        first need (idempotent, safe from a worker thread — the hub attaches
+        its source to CFRunLoopGetMain(), where flow.menubar runs NSApp).
 
         Raises RuntimeError if the tap cannot be created (Input Monitoring
-        permission missing or revoked).
+        permission missing or revoked) — the same contract as when each
+        listener owned a tap, so App's failure isolation (#22) and the boot
+        "Restart TRD Speak now" flow are unchanged.
         """
-        if self._tap is not None:
+        if self._registered:
             return
-        callback = self._tap_callback  # keep a strong reference on self
-        mask = (
-            Quartz.CGEventMaskBit(Quartz.kCGEventKeyDown)
-            | Quartz.CGEventMaskBit(Quartz.kCGEventKeyUp)
-            | Quartz.CGEventMaskBit(Quartz.kCGEventFlagsChanged)
-        )
-        # Head-insert, NOT tail-append. A tail-append tap sits at the END of the
-        # session tap chain, so an upstream ACTIVE tap that claims a combo as a
-        # shortcut (and returns NULL) deletes the event before we ever see it.
-        # The keys that get claimed this way are overwhelmingly ⌘-combos, so a
-        # tail tap silently misses Command shortcuts (cmd+alt, cmd+ctrl+p) while
-        # ctrl/shift/alt combos — which nothing upstream claims — pass through.
-        # Whether the miss bites depends on the (non-deterministic) registration
-        # order of every other tap on the machine, so it presents as "works in
-        # one build, dead in another". Head-insert places us FIRST in the chain
-        # — the documented practice of every reliable hotkey tool (Hammerspoon,
-        # skhd) — so Command combos reach us before any consumer. We stay
-        # listen-only: we only observe, never swallow the user's keystrokes.
-        tap = Quartz.CGEventTapCreate(
-            Quartz.kCGSessionEventTap,
-            Quartz.kCGHeadInsertEventTap,
-            Quartz.kCGEventTapOptionListenOnly,
-            mask,
-            callback,
-            None,
-        )
-        if tap is None:
-            raise RuntimeError(
-                "Could not create the keyboard event tap. Grant TRD Speak "
-                "Input Monitoring permission in System Settings > Privacy & "
-                "Security > Input Monitoring, then restart the app."
-            )
-        source = Quartz.CFMachPortCreateRunLoopSource(None, tap, 0)
-        Quartz.CFRunLoopAddSource(
-            Quartz.CFRunLoopGetMain(), source, Quartz.kCFRunLoopCommonModes
-        )
-        Quartz.CGEventTapEnable(tap, True)
-        Quartz.CFRunLoopWakeUp(Quartz.CFRunLoopGetMain())
-        self._callback = callback
-        self._tap = tap
-        self._source = source
+        self._hub.register(self)
+        self._registered = True
 
     def stop(self) -> None:
-        """Disable the event tap and detach it from the main run loop."""
-        tap, source = self._tap, self._source
-        if tap is None:
-            return
+        """Unregister from the hub and forget all shadow state.
+
+        The hub's tap deliberately survives (one tap per process; see
+        flow.event_tap). State is cleared even if this listener was never
+        registered, so a stop() always leaves a clean slate and unblocks any
+        wait_all_released() waiter.
+        """
         try:
-            Quartz.CGEventTapEnable(tap, False)
-            if source is not None:
-                Quartz.CFRunLoopRemoveSource(
-                    Quartz.CFRunLoopGetMain(), source, Quartz.kCFRunLoopCommonModes
-                )
-            Quartz.CFMachPortInvalidate(tap)
+            self._hub.unregister(self)
         except Exception as exc:
             print(f"Hotkey listener stop error: {exc}")
-        self._tap = None
-        self._source = None
-        self._callback = None
+        self._registered = False
+        self.reset_hold_state()
+
+    def reset_hold_state(self) -> None:
+        """Forget every per-hold shadow state: held keys, active/contaminated
+        flags, keydown-fire arming. Called by stop() and by the hub on
+        unmute(), because keys pressed while the hub was muted were never
+        seen — stale state must not phantom-fire on the next event (#21
+        per-hold semantics). Wakes wait_all_released() waiters.
+
+        A hold-mode listener whose combo was ACTIVE gets one balancing
+        on_deactivate (guarded, fired outside the lock): a window can be
+        opened with the mouse while push-to-talk is held, and clearing
+        _active silently would leave the recording with no stop signal until
+        max_seconds (adversarial finding ADV-15). Tap-mode state is only
+        cleared — synthesizing an on_trigger here would paste into whatever
+        window just opened.
+        """
         with self._cond:
+            fire_deactivate = self._active and self._mode == "hold"
             self._held.clear()
+            self._keys_down.clear()
             self._active = False
+            self._contaminated = False
+            self._fired_this_hold = False
             self._extra_mods_down = False
             self._cond.notify_all()
-
-    def ensure_enabled(self) -> bool:
-        """Re-assert the event tap if macOS has disabled it.
-
-        A tap callback that runs too long trips the system's tap-timeout
-        watchdog, which disables the tap; the keyboard then stops reaching us
-        even though the process is alive. A periodic caller (the menu poll)
-        uses this to recover. Returns True if the tap had to be re-enabled,
-        False if it was already enabled or no tap exists.
-        """
-        tap = self._tap
-        if tap is None:
-            return False
-        if not Quartz.CGEventTapIsEnabled(tap):
-            Quartz.CGEventTapEnable(tap, True)
-            return True
-        return False
-
-    def take_event_count(self) -> int:
-        """Return the number of events seen since the last call, and reset.
-
-        A periodic caller logs this as a tap heartbeat: a long stretch of
-        zeros while the app is in use means the tap has gone silent.
-        """
-        count = self._event_count
-        self._event_count = 0
-        return count
+        if fire_deactivate:
+            self._guarded(self._on_deactivate)
 
     def wait_all_released(self, timeout: float = 2.0) -> bool:
         """Block until every trigger key is physically up.
@@ -384,20 +340,18 @@ class HotkeyListener:
                 self._cond.wait(remaining)
             return True
 
-    # -- event tap callback (runs on the main thread) ------------------
+    # -- event callback (runs on the main thread, fed by the hub) -------
 
     def _tap_callback(self, proxy, event_type, event, refcon):
-        # An exception escaping a tap callback kills the tap silently, so
-        # the entire body is guarded.
+        # The hub guards each listener, but an exception must still never
+        # escape here (defense in depth: a direct caller is a tap callback).
         try:
-            self._event_count += 1
             if event_type in (
                 Quartz.kCGEventTapDisabledByTimeout,
                 Quartz.kCGEventTapDisabledByUserInput,
             ):
-                if self._tap is not None:
-                    Quartz.CGEventTapEnable(self._tap, True)
-                    print("Keyboard event tap was disabled by the system — re-enabled it.")
+                # Tap lifecycle is the hub's job (flow.event_tap re-enables
+                # and never forwards these); ignore them defensively.
                 return event
             # Modifiers are tracked SOLELY from the absolute CGEventGetFlags()
             # bitmask, never from the per-event keycode: that keycode can be

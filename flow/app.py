@@ -11,6 +11,7 @@ from flow.config import Config
 from flow.corrector import TextCorrector
 from flow.dictionary import Dictionary, load_dictionary, save_dictionary
 from flow.engines import EngineUnavailable, make_transcriber
+from flow.event_tap import EventTapHub
 from flow.history import History
 from flow.hotkey import HotkeyListener, modifiers_physically_down
 from flow.learning import derive
@@ -48,30 +49,38 @@ class App:
         self._dictation_thread = None
         # Signals the active dictation worker to stop recording and process.
         self._stop_recording = threading.Event()
+        # ONE hardened event tap for the whole process (issue #20): every
+        # listener registers with this hub instead of creating its own tap,
+        # so there is exactly one CGEventTapCreate however many shortcuts
+        # are configured, and one mach port for macOS to disable.
+        self.tap_hub = EventTapHub()
         self.hotkey = HotkeyListener(
             keys=config.keys,
             on_activate=self._on_activate,
             on_deactivate=self._on_deactivate,
             name="dictation",
+            hub=self.tap_hub,
         )
-        # Diagnostic logging for the re-paste tap, dev builds only: traces when
-        # the combo fires and re-arms so the real macOS tap can be verified on
-        # hardware (the dev log), never in production.
+        # Diagnostic logging for the re-paste listener, dev builds only: traces
+        # when the combo fires and re-arms so the real macOS tap can be verified
+        # on hardware (the dev log), never in production.
         self._repaste_debug = "repaste" if paths.IS_DEV else None
-        # Second, independent listener (its own tap): a clean tap of this combo
-        # re-pastes the most recent dictation into the focused window.
+        # Second, independent listener (same shared tap): a clean tap of this
+        # combo re-pastes the most recent dictation into the focused window.
         self.repaste_hotkey = HotkeyListener(
             keys=config.repaste_keys,
             on_trigger=self._on_repaste,
             debug_label=self._repaste_debug,
             name="re-paste",
+            hub=self.tap_hub,
         )
         # Third independent listener: a clean tap opens the correction editor on
-        # the last dictation (learn-from-correction). Same tap pattern as re-paste.
+        # the last dictation (learn-from-correction). Same pattern as re-paste.
         self.correction_hotkey = HotkeyListener(
             keys=config.correct_keys,
             on_trigger=self._on_correct,
             name="correction",
+            hub=self.tap_hub,
         )
         self._state = IDLE
         self._lock = threading.Lock()
@@ -434,8 +443,13 @@ class App:
         ObjC delegate callbacks that call resume/set_hotkeys. Failures are
         logged with the listener label, reported via on_hotkeys_degraded, and
         retried by the watchdog (retry_failed_hotkeys) until they recover.
+
+        Unmutes the hub FIRST: mute is dispatch-gating only, and unmute also
+        resets per-hold listener state so keys pressed while a window was
+        open cannot phantom-fire (issue #20).
         """
         self._hotkeys_suspended = False
+        self.tap_hub.unmute()
         failed: set[str] = set()
         for label, lis in self.iter_hotkeys():
             try:
@@ -472,25 +486,24 @@ class App:
         return recovered
 
     def suspend_hotkeys(self) -> None:
-        """Stop all three global event taps (settings window opening).
+        """Mute the shared event tap (settings/correction window opening).
 
-        Listen-only taps keep observing keys even when a window is focused, so a
-        combo pressed to RECORD a shortcut would also fire the live listener.
-        Suspending all three makes the window's local NSEvent monitor the only
-        listener active while recording. Main thread only.
+        The listen-only tap keeps observing keys even when a window is
+        focused, so a combo pressed to RECORD a shortcut would also fire the
+        live listeners. Muting the hub gates dispatch, making the window's
+        local NSEvent monitor the only combo listener while recording — the
+        tap itself is NOT destroyed (issue #20: every recreation was a fresh
+        opportunity to fail; window open/close now performs zero tap
+        create/destroy operations). Main thread only.
         """
         self._hotkeys_suspended = True
-        for label, lis in self.iter_hotkeys():
-            try:
-                lis.stop()
-            except Exception as exc:
-                print(f"Could not stop the {label} hotkey listener: {exc}")
+        self.tap_hub.mute()
 
     def resume_hotkeys(self) -> None:
-        """Restart all three taps with the unchanged config keys (Cancel / close
-        without save). start() recreates each tap after stop() cleared it.
-        Failure-isolated: see _start_all_hotkeys. Never raises (the callers
-        are ObjC delegate callbacks). Main thread only.
+        """Unmute the hub and re-attempt any listener whose registration is
+        still down, with the unchanged config keys (Cancel / close without
+        save). Failure-isolated: see _start_all_hotkeys. Never raises (the
+        callers are ObjC delegate callbacks). Main thread only.
         """
         self._start_all_hotkeys()
 
@@ -500,9 +513,10 @@ class App:
         repaste_keys: list[str],
         correct_keys: list[str],
     ) -> None:
-        """Apply new shortcuts immediately (Save): stop all three taps, rebuild
-        all three HotkeyListener objects with the new keys and the SAME callbacks,
-        start all three, and update self.config.keys / self.config.repaste_keys /
+        """Apply new shortcuts immediately (Save): unregister all three
+        listeners, rebuild them with the new keys, the SAME callbacks, and the
+        SAME shared hub (the single tap survives the rebuild untouched), start
+        all three, and update self.config.keys / self.config.repaste_keys /
         self.config.correct_keys.
 
         Main thread only — the same thread as the menu poll/watchdog, so there is
@@ -514,29 +528,46 @@ class App:
         even if a listener cannot start the app is in a consistent,
         self-reported state — the watchdog keeps retrying with the NEW combos.
         Never raises (the caller is an ObjC delegate callback).
+
+        The new listeners are CONSTRUCTED (which validates every key name)
+        before the old ones are stopped: an invalid combo slipping past the
+        settings window's validation must reject the save and keep the
+        current shortcuts live, never strand the app with every listener
+        unregistered (adversarial finding ADV-35).
         """
+        try:
+            new_hotkey = HotkeyListener(
+                keys=dictate_keys,
+                on_activate=self._on_activate,
+                on_deactivate=self._on_deactivate,
+                name="dictation",
+                hub=self.tap_hub,
+            )
+            new_repaste = HotkeyListener(
+                keys=repaste_keys,
+                on_trigger=self._on_repaste,
+                debug_label=self._repaste_debug,
+                name="re-paste",
+                hub=self.tap_hub,
+            )
+            new_correction = HotkeyListener(
+                keys=correct_keys,
+                on_trigger=self._on_correct,
+                name="correction",
+                hub=self.tap_hub,
+            )
+        except Exception as exc:
+            print(f"Invalid shortcut configuration ({exc}); "
+                  "keeping the current shortcuts.")
+            return
         for label, lis in self.iter_hotkeys():
             try:
                 lis.stop()
             except Exception as exc:
                 print(f"Could not stop the {label} hotkey listener: {exc}")
-        self.hotkey = HotkeyListener(
-            keys=dictate_keys,
-            on_activate=self._on_activate,
-            on_deactivate=self._on_deactivate,
-            name="dictation",
-        )
-        self.repaste_hotkey = HotkeyListener(
-            keys=repaste_keys,
-            on_trigger=self._on_repaste,
-            debug_label=self._repaste_debug,
-            name="re-paste",
-        )
-        self.correction_hotkey = HotkeyListener(
-            keys=correct_keys,
-            on_trigger=self._on_correct,
-            name="correction",
-        )
+        self.hotkey = new_hotkey
+        self.repaste_hotkey = new_repaste
+        self.correction_hotkey = new_correction
         self.config.keys = list(dictate_keys)
         self.config.repaste_keys = list(repaste_keys)
         self.config.correct_keys = list(correct_keys)
@@ -601,10 +632,16 @@ class App:
         self._notify("ready")
 
     def shutdown(self) -> None:
-        """Stop the listeners and any in-flight recording."""
+        """Stop the listeners, tear down the shared tap, and stop any
+        in-flight recording. Listeners are unregistered FIRST so the watchdog
+        cannot resurrect the destroyed tap."""
         self.hotkey.stop()
         self.repaste_hotkey.stop()
         self.correction_hotkey.stop()
+        try:
+            self.tap_hub.destroy()
+        except Exception as exc:
+            print(f"Event tap teardown error: {exc}")
         try:
             self.recorder.stop()
         except Exception:

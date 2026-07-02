@@ -68,7 +68,10 @@ def test_set_hotkeys_calls_stop_then_start_on_all_three(app, monkeypatch):
     assert {sid for _, sid in starts} == new_ids
 
 
-def test_suspend_hotkeys_stops_all_three(app, monkeypatch):
+def test_suspend_hotkeys_mutes_the_hub_without_stopping_listeners(app, monkeypatch):
+    """Issue #20 contract change: suspend no longer stops (destroys) anything.
+    The single shared tap is MUTED — zero tap create/destroy on window
+    open/close — and resume unmutes. Listener stop() must not run."""
     stopped = []
     monkeypatch.setattr(
         app_mod.HotkeyListener, "stop", lambda self: stopped.append(id(self))
@@ -76,9 +79,12 @@ def test_suspend_hotkeys_stops_all_three(app, monkeypatch):
 
     app.suspend_hotkeys()
 
-    assert id(app.hotkey) in stopped
-    assert id(app.repaste_hotkey) in stopped
-    assert id(app.correction_hotkey) in stopped
+    assert stopped == []
+    assert app.tap_hub._muted is True
+    assert app._hotkeys_suspended is True
+
+    app.resume_hotkeys()
+    assert app.tap_hub._muted is False
 
 
 def test_iter_hotkeys_includes_all_three_taps(app):
@@ -101,22 +107,25 @@ def test_iter_hotkeys_tracks_rebuilt_listeners_after_set_hotkeys(app):
     assert listeners["Re-paste"] is app.repaste_hotkey
 
 
-def test_watchdog_reenables_every_disabled_tap_including_correction(app, monkeypatch):
-    """The watchdog must re-enable ALL taps macOS disabled. Regression guard:
-    the correction tap was previously never re-enabled by the watchdog."""
+def test_watchdog_reenables_the_shared_tap(app, monkeypatch):
+    """Issue #20 contract change: there is ONE tap (App.tap_hub) covering all
+    three shortcuts — the correction tap can no longer be 'left unwatched'
+    because there is no per-listener tap. The watchdog re-enables the hub's
+    tap when macOS disabled it, and reports nothing when it is healthy."""
+    import flow.event_tap as et
     from flow import menubar
 
-    # Every listener reports itself disabled-then-reenabled once.
+    state = {"enabled": False}
+    app.tap_hub._tap = object()  # a live-but-disabled tap (sentinel)
+    monkeypatch.setattr(et.Quartz, "CGEventTapIsEnabled", lambda tap: state["enabled"])
     monkeypatch.setattr(
-        app_mod.HotkeyListener, "ensure_enabled", lambda self: True
+        et.Quartz, "CGEventTapEnable",
+        lambda tap, on: state.__setitem__("enabled", bool(on)),
     )
-    reenabled = menubar.reenable_disabled_taps(app)
-    assert set(reenabled) == {"Hotkey", "Re-paste", "Correction"}
 
+    assert menubar.reenable_disabled_taps(app) == ["Event tap"]
+    assert state["enabled"] is True
     # When nothing is disabled, the watchdog reports nothing.
-    monkeypatch.setattr(
-        app_mod.HotkeyListener, "ensure_enabled", lambda self: False
-    )
     assert menubar.reenable_disabled_taps(app) == []
 
 

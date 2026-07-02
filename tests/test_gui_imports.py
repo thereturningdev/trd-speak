@@ -11,3 +11,6 @@ def test_gui_modules_import_together():
     import flow.settings_window  # noqa: F401
     import flow.correction_window  # noqa: F401
     import flow.menubar  # noqa: F401
+    # flow.event_tap deliberately declares NO NSObject subclass (block-based
+    # observers), so it can never collide; importing it here keeps that true.
+    import flow.event_tap  # noqa: F401

@@ -843,24 +843,26 @@ class MenuBar:
 
 
 def reenable_disabled_taps(logic) -> list[str]:
-    """Recover every dead global tap; return the labels that were recovered.
+    """Recover dead hotkey machinery; return labels describing what recovered.
 
-    Two failure shapes, both handled each tick:
-    - a listener whose tap EXISTS but macOS disabled it (slow callback tripped
-      the tap timeout) gets a CGEventTapEnable re-assert (ensure_enabled);
-    - a listener whose tap is None because start() FAILED (stale TCC grant,
-      transient CGEventTapCreate refusal in resume/set_hotkeys) gets a full
-      start() retry via logic.retry_failed_hotkeys() — which is a no-op while
-      the taps are deliberately suspended (a settings/correction window is
-      open), so the watchdog never resurrects suspended taps.
-
-    Iterating logic.iter_hotkeys() (the single source of truth) guarantees no
-    tap is silently left unwatched.
+    Two failure shapes, both handled each tick (issue #20: there is now ONE
+    tap, owned by logic.tap_hub, shared by every listener):
+    - a listener whose hub registration FAILED (stale TCC grant, transient
+      CGEventTapCreate refusal in resume/set_hotkeys) gets a full start()
+      retry via logic.retry_failed_hotkeys() — a no-op while the hotkeys are
+      deliberately suspended (a settings/correction window is open), so the
+      watchdog never resurrects suspended shortcuts;
+    - the single tap itself is watched by EventTapHub.watchdog_tick(): a tap
+      macOS disabled is re-enabled ("Event tap"); if the re-enable did not
+      stick by the next tick — or the tap vanished — it is destroyed and
+      rebuilt from scratch ("Event tap (recreated)").
     """
     recovered = list(logic.retry_failed_hotkeys())
-    recovered.extend(
-        label for label, lis in logic.iter_hotkeys() if lis.ensure_enabled()
-    )
+    action = logic.tap_hub.watchdog_tick()
+    if action == "re-enabled":
+        recovered.append("Event tap")
+    elif action == "recreated":
+        recovered.append("Event tap (recreated)")
     return recovered
 
 
@@ -978,16 +980,17 @@ def run(config: Config) -> None:
         if state["boot_ok"]:
             try:
                 for label in reenable_disabled_taps(logic):
-                    print(f"{label} tap was dead — recovered by the watchdog.")
-                # Liveness heartbeat (~30 s): a long run of zeros while the app
-                # is in use means a tap has gone silent — direct evidence of the
-                # "stops after a while" freeze, no keystrokes logged.
+                    print(f"{label} was dead — recovered by the watchdog.")
+                # Liveness heartbeat (~30 s): one hub-level counter (issue
+                # #20). A long run of zeros while the app is in use means the
+                # tap has gone silent — direct evidence of the "stops after a
+                # while" freeze, no keystrokes logged. Deliberately a LOG
+                # ONLY, never a recreate trigger: silence is indistinguishable
+                # from an idle user, and the disabled-state check above
+                # already rebuilds a dead tap within two ticks.
                 if state["timer_fires"] % 15 == 0:
-                    counts = ", ".join(
-                        f"{label} {lis.take_event_count()}"
-                        for label, lis in logic.iter_hotkeys()
-                    )
-                    print(f"Hotkey tap heartbeat: {counts} events in the last ~30 s.")
+                    count = logic.tap_hub.take_event_count()
+                    print(f"Event tap heartbeat: {count} events in the last ~30 s.")
             except Exception as exc:
                 print(f"Hotkey watchdog error: {exc}")
         # 2 s while anything is missing or the boot has not finished; back

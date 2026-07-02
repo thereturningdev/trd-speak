@@ -411,42 +411,48 @@ def test_adv17_boot_failure_then_suspend_keeps_watchdog_silent(app, monkeypatch)
 # Watchdog tick combining both recovery shapes
 # ---------------------------------------------------------------------------
 
-def test_adv18_one_tick_combines_start_retry_and_ensure_enabled(app, monkeypatch):
-    """One tick must report BOTH a start()-retry recovery and an
-    ensure_enabled re-assert on another listener, with no duplicates."""
+def _disable_hub_tap(app, monkeypatch):
+    """Give App.tap_hub a live-but-disabled sentinel tap (issue #20: the hub
+    owns the ONE tap the watchdog re-enables; per-listener ensure_enabled is
+    gone). Returns the mutable enabled-state dict."""
+    import flow.event_tap as et
+
+    state = {"enabled": False}
+    app.tap_hub._tap = object()
+    monkeypatch.setattr(et.Quartz, "CGEventTapIsEnabled", lambda tap: state["enabled"])
+    monkeypatch.setattr(
+        et.Quartz, "CGEventTapEnable",
+        lambda tap, on: state.__setitem__("enabled", bool(on)),
+    )
+    return state
+
+
+def test_adv18_one_tick_combines_start_retry_and_hub_reenable(app, monkeypatch):
+    """One tick must report BOTH a start()-retry recovery and the hub tap
+    re-assert, with no duplicates. (Was per-listener ensure_enabled before
+    issue #20 consolidated the three taps into App.tap_hub.)"""
     failing = {"re-paste"}
     started, reported = _instrument(monkeypatch, app, failing)
     app.resume_hotkeys()
     failing.clear()
 
-    # The dictation tap exists but macOS disabled it: ensure_enabled -> True.
-    reasserted = []
-
-    def fake_ensure(self):
-        if self._name == "dictation" and not reasserted:
-            reasserted.append(self._name)
-            return True
-        return False
-
-    monkeypatch.setattr(app_mod.HotkeyListener, "ensure_enabled", fake_ensure)
+    state = _disable_hub_tap(app, monkeypatch)
 
     recovered = menubar.reenable_disabled_taps(app)
-    assert sorted(recovered) == ["Hotkey", "Re-paste"]
+    assert sorted(recovered) == ["Event tap", "Re-paste"]
     assert len(recovered) == len(set(recovered))  # no duplicate labels
+    assert state["enabled"] is True
     assert reported[-1] == ()
 
 
-def test_adv19_ensure_enabled_still_runs_when_no_start_failures(app, monkeypatch):
-    """The ensure_enabled leg of the tick must run even with an empty failure
-    set (retry_failed_hotkeys early-returns)."""
+def test_adv19_hub_watchdog_still_runs_when_no_start_failures(app, monkeypatch):
+    """The hub-tap leg of the tick must run even with an empty failure set
+    (retry_failed_hotkeys early-returns)."""
     started, reported = _instrument(monkeypatch, app, set())
     app.resume_hotkeys()
-    monkeypatch.setattr(
-        app_mod.HotkeyListener,
-        "ensure_enabled",
-        lambda self: self._name == "correction",
-    )
-    assert menubar.reenable_disabled_taps(app) == ["Correction"]
+    state = _disable_hub_tap(app, monkeypatch)
+    assert menubar.reenable_disabled_taps(app) == ["Event tap"]
+    assert state["enabled"] is True
 
 
 # ---------------------------------------------------------------------------

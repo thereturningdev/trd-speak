@@ -54,6 +54,11 @@ def test_learn_does_not_raise_or_mutate_when_save_fails(monkeypatch, tmp_path):
 
 
 def test_correction_hotkey_participates_in_suspend_resume(monkeypatch, tmp_path):
+    """Issue #20 contract change: suspend/resume are hub-level mute/unmute
+    (the shared tap is never destroyed by a window opening), so 'the
+    correction hotkey participates' now means it shares App.tap_hub — muting
+    it silences the correction combo with the others — and resume still
+    attempts start() on it (the #22 retry contract)."""
     import flow.app as app_mod
     from flow.config import Config
     monkeypatch.setattr(app_mod.paths, "DICTATIONS_PATH", tmp_path / "d.json")
@@ -64,7 +69,10 @@ def test_correction_hotkey_participates_in_suspend_resume(monkeypatch, tmp_path)
     monkeypatch.setattr(app_mod, "make_transcriber", lambda *a, **k: object())
     app = app_mod.App(Config())
     cid = id(app.correction_hotkey)
+    assert app.correction_hotkey._hub is app.tap_hub  # muted with the rest
     app.suspend_hotkeys()
-    assert (cid, "stop") in calls
+    assert app.tap_hub._muted is True
+    assert calls == []  # nothing stopped: zero tap operations (issue #20)
     app.resume_hotkeys()
+    assert app.tap_hub._muted is False
     assert (cid, "start") in calls

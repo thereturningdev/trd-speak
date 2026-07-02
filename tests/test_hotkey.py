@@ -1,13 +1,18 @@
-"""Tests for the event-tap watchdog (ensure_enabled).
+"""Tests for the HotkeyListener combo-matching state machine.
 
-macOS disables a CGEventTap whose callback runs too long. The listener must
-expose a way to detect that and re-assert the tap so a poll timer can recover
-it. These tests stub the Quartz tap calls — no real tap / Input Monitoring
+These tests stub the Quartz tap calls — no real tap / Input Monitoring
 permission is needed.
+
+Issue #20 moved the tap lifecycle (create/enable/watchdog/heartbeat) from the
+listener to the shared flow.event_tap.EventTapHub, so the old per-listener
+ensure_enabled/take_event_count tests moved to tests/test_event_tap.py. The
+listener keeps its full matching state machine and its start()/stop() API
+(now hub registration), including the RuntimeError-on-create-failure contract.
 """
 
 import pytest
 
+import flow.event_tap as et
 import flow.hotkey as hk
 from flow.hotkey import (
     HotkeyListener,
@@ -32,6 +37,19 @@ def _listener():
     return HotkeyListener(
         keys=["ctrl", "shift"], on_activate=lambda: None, on_deactivate=lambda: None
     )
+
+
+class _FakeCenter:
+    def addObserverForName_object_queue_usingBlock_(self, name, obj, queue, block):
+        return object()
+
+
+@pytest.fixture(autouse=True)
+def _no_real_workspace_observers(monkeypatch):
+    """Keep the hub's wake observers off the real NSWorkspace center."""
+    monkeypatch.setattr(et, "_workspace_notification_center", lambda: _FakeCenter())
+    monkeypatch.setattr(et, "_wake_notification_names", lambda: ("W", "S"))
+    monkeypatch.setattr(et, "_main_queue", lambda: "main-queue")
 
 
 class _Driver:
@@ -375,53 +393,53 @@ def test_start_uses_head_insert_so_command_combos_are_not_eaten(monkeypatch):
     assert captured["option"] == hk.Quartz.kCGEventTapOptionListenOnly
 
 
-def test_ensure_enabled_is_noop_without_a_tap():
+# ensure_enabled / take_event_count moved to the hub (issue #20): the single
+# tap's watchdog and heartbeat are covered in tests/test_event_tap.py.
+
+
+def test_start_raises_when_the_hub_cannot_create_the_tap(monkeypatch):
+    """start() must keep raising RuntimeError when the tap cannot be created
+    (Input Monitoring missing): the boot 'Restart TRD Speak now' flow and the
+    #22 watchdog retry both key off that contract, now via the hub."""
+    monkeypatch.setattr(hk.Quartz, "CGEventTapCreate", lambda *a: None)
     listener = _listener()
-    assert listener._tap is None
-    assert listener.ensure_enabled() is False
+
+    with pytest.raises(RuntimeError, match="Input Monitoring"):
+        listener.start()
+
+    # A later retry with the grant restored succeeds (the failed attempt
+    # must not leave the listener half-registered).
+    monkeypatch.setattr(hk.Quartz, "CGEventTapCreate", lambda *a: object())
+    monkeypatch.setattr(hk.Quartz, "CFMachPortCreateRunLoopSource", lambda *a: object())
+    monkeypatch.setattr(hk.Quartz, "CFRunLoopGetMain", lambda: object())
+    monkeypatch.setattr(hk.Quartz, "CFRunLoopAddSource", lambda *a: None)
+    monkeypatch.setattr(hk.Quartz, "CGEventTapEnable", lambda *a: None)
+    monkeypatch.setattr(hk.Quartz, "CFRunLoopWakeUp", lambda *a: None)
+    listener.start()
+    assert listener._registered is True
 
 
-def test_ensure_enabled_reenables_a_disabled_tap(monkeypatch):
-    listener = _listener()
-    listener._tap = object()  # sentinel standing in for a real tap
-    state = {"enabled": False}  # macOS has disabled the tap
-    calls = []
+def test_reset_hold_state_clears_everything_and_unblocks_waiters():
+    """reset_hold_state (used by stop() and the hub's unmute) must leave no
+    shadow state behind: held keys, active/contaminated flags, keydown-fire
+    arming — and must wake wait_all_released()."""
+    listener = HotkeyListener(keys=["cmd", "ctrl", "p"], on_trigger=lambda: None)
+    listener._held = {"cmd": {55}}
+    listener._keys_down = {"p"}
+    listener._active = True
+    listener._contaminated = True
+    listener._fired_this_hold = True
+    listener._extra_mods_down = True
 
-    monkeypatch.setattr(hk.Quartz, "CGEventTapIsEnabled", lambda tap: state["enabled"])
+    listener.reset_hold_state()
 
-    def fake_enable(tap, on):
-        calls.append(on)
-        state["enabled"] = on
-
-    monkeypatch.setattr(hk.Quartz, "CGEventTapEnable", fake_enable)
-
-    # Disabled -> re-enabled, reports True.
-    assert listener.ensure_enabled() is True
-    assert calls == [True]
-    # Already enabled -> no-op, reports False.
-    assert listener.ensure_enabled() is False
-    assert calls == [True]
-
-
-def test_take_event_count_reads_and_resets():
-    listener = _listener()
-    assert listener.take_event_count() == 0
-    listener._event_count = 3
-    assert listener.take_event_count() == 3  # reads
-    assert listener.take_event_count() == 0  # and resets
-
-
-def test_callback_counts_every_event_for_liveness(monkeypatch):
-    """The tap counts that events arrive (never which keys), so the poll can
-    tell a live tap from a silently-dead one."""
-    listener = _listener()
-    # Non-target keycode: exercises the count without firing the combo.
-    monkeypatch.setattr(hk.Quartz, "CGEventGetIntegerValueField", lambda e, f: 999)
-
-    listener._tap_callback(None, hk.Quartz.kCGEventKeyDown, object(), None)
-    listener._tap_callback(None, hk.Quartz.kCGEventKeyUp, object(), None)
-
-    assert listener.take_event_count() == 2
+    assert listener._held == {}
+    assert listener._keys_down == set()
+    assert listener._active is False
+    assert listener._contaminated is False
+    assert listener._fired_this_hold is False
+    assert listener._extra_mods_down is False
+    assert listener.wait_all_released(timeout=0.05) is True
 
 
 # --- recorder helpers: keycode/flags -> token + combo validation ---------
