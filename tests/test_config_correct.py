@@ -20,3 +20,20 @@ def test_correct_table_must_be_table(tmp_path):
     p.write_text('correct = 5\n')
     with pytest.raises(ValueError):
         load_config(str(p))
+
+
+def test_single_bare_key_correct_falls_back_to_default(tmp_path, capsys):
+    """A 1-key combo is shape-valid but unusable as a global shortcut --
+    falls back to the default (never raises), and logs the rejection (#26)."""
+    p = tmp_path / "config.toml"
+    p.write_text('[correct]\nkeys = ["ctrl"]\n')
+    cfg = load_config(str(p))
+    assert cfg.correct_keys == ["cmd", "alt"]
+    out = capsys.readouterr()
+    assert "correct.keys" in out.out + out.err
+
+
+def test_two_keys_no_modifier_correct_falls_back_to_default(tmp_path):
+    p = tmp_path / "config.toml"
+    p.write_text('[correct]\nkeys = ["v", "b"]\n')
+    assert load_config(str(p)).correct_keys == ["cmd", "alt"]

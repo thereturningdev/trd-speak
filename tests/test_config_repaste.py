@@ -48,3 +48,21 @@ def test_invalid_repaste_keys_raise(tmp_path, value):
     cfg_file.write_text(f"[repaste]\nkeys = {value}\n")
     with pytest.raises(ValueError):
         load_config(str(cfg_file))
+
+
+def test_single_bare_modifier_repaste_falls_back_to_default(tmp_path, capsys):
+    """A 1-key combo is shape-valid (validate_keys) but unusable as a global
+    shortcut (validate_combo) -- must fall back to the default, not raise,
+    and must log what was rejected (issue #26)."""
+    cfg_file = tmp_path / "config.toml"
+    cfg_file.write_text('[repaste]\nkeys = ["v"]\n')
+    cfg = load_config(str(cfg_file))
+    assert cfg.repaste_keys == ["cmd", "ctrl"]
+    out = capsys.readouterr()
+    assert "repaste.keys" in out.out + out.err
+
+
+def test_two_keys_no_modifier_repaste_falls_back_to_default(tmp_path):
+    cfg_file = tmp_path / "config.toml"
+    cfg_file.write_text('[repaste]\nkeys = ["v", "b"]\n')
+    assert load_config(str(cfg_file)).repaste_keys == ["cmd", "ctrl"]

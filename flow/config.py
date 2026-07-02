@@ -52,6 +52,38 @@ def validate_keys(value: object, setting: str) -> list[str]:
 _validate_keys = validate_keys
 
 
+def _validate_combo_or_default(keys: list[str], default: list[str], setting: str) -> list[str]:
+    """After validate_keys has confirmed `keys` is a well-formed list of 1-3
+    non-empty strings, also enforce the stronger "usable global shortcut"
+    rule the settings window applies (flow.hotkey.validate_combo: 2-3 keys,
+    at least one modifier) -- see issue #26. `keys = ["ctrl"]` or `["v"]` is
+    shape-valid but would arm a hotkey that fires on every press of that one
+    key. Falls back to `default` and logs loudly rather than raising: a
+    config.toml value that is merely an unusable combo (not malformed) must
+    never prevent the app from starting.
+
+    Local import (matching the existing flow.engines pattern below) keeps
+    flow.config's module-level footprint free of flow.hotkey's Quartz
+    dependency for callers that never touch hotkeys.
+
+    Returns the CANONICALIZED combo (whitespace-stripped, aliases resolved)
+    on success, not the raw input -- a whitespace-padded but legitimate
+    token (e.g. " ctrl") passes validate_combo but must not be stored or
+    displayed untrimmed.
+    """
+    from flow.hotkey import canonicalize_combo, validate_combo
+
+    try:
+        validate_combo(keys)
+    except ValueError as exc:
+        print(
+            f"[config] rejected {setting}={keys!r}: {exc} "
+            f"Falling back to {default!r}."
+        )
+        return list(default)
+    return canonicalize_combo(keys)
+
+
 def load_config(path: str | None = None) -> Config:
     """Load config from a TOML file; missing file yields all defaults.
 
@@ -70,19 +102,25 @@ def load_config(path: str | None = None) -> Config:
     if not isinstance(hotkey, dict):
         raise ValueError("[hotkey] must be a TOML table")
     if "keys" in hotkey:
-        cfg.keys = _validate_keys(hotkey["keys"], "hotkey.keys")
+        cfg.keys = _validate_combo_or_default(
+            _validate_keys(hotkey["keys"], "hotkey.keys"), cfg.keys, "hotkey.keys"
+        )
 
     repaste = data.get("repaste", {})
     if not isinstance(repaste, dict):
         raise ValueError("[repaste] must be a TOML table")
     if "keys" in repaste:
-        cfg.repaste_keys = _validate_keys(repaste["keys"], "repaste.keys")
+        cfg.repaste_keys = _validate_combo_or_default(
+            _validate_keys(repaste["keys"], "repaste.keys"), cfg.repaste_keys, "repaste.keys"
+        )
 
     correct = data.get("correct", {})
     if not isinstance(correct, dict):
         raise ValueError("[correct] must be a TOML table")
     if "keys" in correct:
-        cfg.correct_keys = _validate_keys(correct["keys"], "correct.keys")
+        cfg.correct_keys = _validate_combo_or_default(
+            _validate_keys(correct["keys"], "correct.keys"), cfg.correct_keys, "correct.keys"
+        )
 
     whisper = data.get("whisper", {})
     if not isinstance(whisper, dict):

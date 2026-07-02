@@ -887,8 +887,12 @@ def run(config: Config) -> None:
 
     # The settings-window/menu choice (App Support JSON) takes precedence over
     # config.toml, per-combo. Resolve BEFORE the combo display string and the
-    # App build so both reflect the saved shortcuts.
-    config.keys, config.repaste_keys, config.correct_keys = hotkey_state.resolve(config)
+    # App build so both reflect the saved shortcuts. dedupe() falls a demoted
+    # combo back to ITS OWN built-in default (never to a config.toml value,
+    # which could itself be the duplicate) -- see flow.hotkey_state.dedupe
+    # (issue #26).
+    resolved = hotkey_state.resolve(config)
+    config.keys, config.repaste_keys, config.correct_keys = hotkey_state.dedupe(*resolved)
     combo = "+".join(config.keys)
     ui = MenuBar(combo, delegate)
     delegate.menubar = ui  # for applicationShouldHandleReopen

@@ -149,6 +149,20 @@ def modifiers_physically_down() -> bool:
     return any(flags & mask for mask in _MODIFIER_MASKS.values())
 
 
+def canonicalize_combo(keys: list[str]) -> list[str]:
+    """Return `keys` normalized to canonical tokens: whitespace-stripped,
+    lower-cased, aliases resolved (see _parse_key_name). Raises ValueError if
+    any token is not a recognized key name.
+
+    Used wherever a combo that has passed validate_combo needs to be
+    STORED/displayed/matched consistently with how HotkeyListener itself
+    will interpret it (flow.config, flow.hotkey_state -- issue #26): without
+    this, a whitespace-padded but otherwise legitimate token (e.g. " ctrl")
+    would validate successfully yet be persisted/displayed untrimmed.
+    """
+    return [_parse_key_name(k) for k in keys]
+
+
 def validate_combo(
     keys: list[str],
     *,
@@ -157,17 +171,35 @@ def validate_combo(
     require_modifier: bool = True,
 ) -> None:
     """Raise ValueError with a human-readable message if `keys` is an
-    unusable global shortcut: too few keys, too many keys, or (when
-    require_modifier) no modifier. Returns None on success.
+    unusable global shortcut: an unrecognized key name, the same key
+    repeated, too few keys, too many keys, or (when require_modifier) no
+    modifier. Returns None on success.
 
-    Used by the settings window's Save validation and unit-tested directly.
-    A 1-key global hotkey is unusable, hence min_keys defaults to 2.
+    Used by the settings window's Save validation, by flow.config and
+    flow.hotkey_state for config.toml/hotkeys.json (issue #26), and
+    unit-tested directly. A 1-key global hotkey is unusable, hence min_keys
+    defaults to 2.
+
+    Canonicalizes every token via _parse_key_name FIRST -- the same
+    normalization (strip whitespace, lower-case, resolve aliases like
+    "option" -> "alt") the real HotkeyListener applies -- before counting or
+    checking for a modifier. This closes two loopholes a raw string
+    comparison would miss (found by adversarial testing, issue #26):
+    (1) a garbage/whitespace-only token (e.g. " ") is not a real key and is
+    rejected here rather than raising deep inside HotkeyListener
+    construction when the app is already starting up; (2) two spellings of
+    the same physical key (["ctrl", "ctrl"] or ["cmd", "command"]) count as
+    ONE key, not two -- otherwise the "a 1-key hotkey is unusable" rule this
+    function exists to enforce could be trivially defeated.
     """
-    if len(keys) < min_keys:
+    canonical = canonicalize_combo(keys)
+    if len(set(canonical)) != len(canonical):
+        raise ValueError("A shortcut cannot use the same key twice.")
+    if len(canonical) < min_keys:
         raise ValueError(f"A shortcut needs at least {min_keys} keys.")
-    if len(keys) > max_keys:
+    if len(canonical) > max_keys:
         raise ValueError(f"A shortcut can have at most {max_keys} keys.")
-    if require_modifier and not any(k in _MODIFIER_TOKENS for k in keys):
+    if require_modifier and not any(k in _MODIFIER_TOKENS for k in canonical):
         raise ValueError(
             "A shortcut needs at least one modifier (cmd, ctrl, alt, or shift)."
         )
