@@ -28,6 +28,7 @@ import time
 import pytest
 
 import flow.app as app_mod
+import flow.carbon_hotkey as carbon_mod
 import flow.hotkey as hk
 from flow.app import App, IDLE, PROCESSING
 from flow.config import Config
@@ -604,39 +605,34 @@ def test_modonly_flagschanged_self_heal_missed_release(monkeypatch):
 # ===========================================================================
 
 class _AppDriver:
-    """Drives a real App's repaste_hotkey tap callback for a char chord."""
+    """Drives a real App's repaste hotkey for a char chord. Char chords ride
+    the Carbon backend (issue #23): one tap = a Carbon pressed+released pair
+    routed through flow.carbon_hotkey's dispatch registry, the same route the
+    real installed Carbon event handler takes."""
 
     def __init__(self, app, monkeypatch):
         self._l = app.repaste_hotkey
-        self._kc = 0
-        self._flags = 0
-        monkeypatch.setattr(
-            hk.Quartz, "CGEventGetIntegerValueField", lambda e, f: self._kc
-        )
-        monkeypatch.setattr(hk.Quartz, "CGEventGetFlags", lambda e: self._flags)
-
-    def modifier(self, keycode, flags):
-        self._kc, self._flags = keycode, flags
-        self._l._tap_callback(None, hk.Quartz.kCGEventFlagsChanged, object(), None)
-
-    def key_down(self, keycode, flags):
-        self._kc, self._flags = keycode, flags
-        self._l._tap_callback(None, hk.Quartz.kCGEventKeyDown, object(), None)
 
     def tap_cmd_ctrl_p(self):
-        self.modifier(_CMD_L, _CMD_MASK)
-        self.modifier(_CTRL_L, _CMD_MASK | _CTRL_MASK)
-        self.key_down(_P, flags=_CMD_MASK | _CTRL_MASK)
-        self.modifier(_CMD_L, _CTRL_MASK)
-        self.modifier(_CTRL_L, 0)
+        carbon_mod._dispatch(self._l._hotkey_id, carbon_mod.kEventHotKeyPressed)
+        carbon_mod._dispatch(self._l._hotkey_id, carbon_mod.kEventHotKeyReleased)
 
 
 def _build_app(monkeypatch, repaste_keys=("cmd", "ctrl", "p")):
     monkeypatch.setattr(app_mod.HotkeyListener, "start", lambda self: None)
     monkeypatch.setattr(app_mod.HotkeyListener, "stop", lambda self: None)
+    # Carbon seams (issue #23): no real registration; the wait's OS modifier
+    # poll answers "all up".
+    monkeypatch.setattr(
+        carbon_mod, "_register", lambda vk, mask, hkid: (0, f"ref-{hkid}")
+    )
+    monkeypatch.setattr(carbon_mod, "_unregister", lambda ref: 0)
+    monkeypatch.setattr(carbon_mod, "_ensure_handler", lambda: None)
+    monkeypatch.setattr(carbon_mod, "modifiers_physically_down", lambda: False)
     cfg = Config()
     cfg.repaste_keys = list(repaste_keys)
     app = App(cfg)
+    app.repaste_hotkey.start()  # register with the (mocked) Carbon layer
     app.can_paste = lambda: True
     pasted: queue.Queue = queue.Queue()
     monkeypatch.setattr(
@@ -781,12 +777,12 @@ def test_func_concurrent_taps_single_paste(monkeypatch):
 
 def test_func_wait_all_released_before_paste(monkeypatch):
     """_do_repaste must wait for the combo keys to be physically released before
-    pasting (so the synthesized Cmd+V is plain). Hold a key in _held and verify
-    the paste is delayed until it clears."""
+    pasting (so the synthesized Cmd+V is plain). Hold the Carbon chord pressed
+    and verify the paste is delayed until the released event arrives."""
     app, pasted = _build_app(monkeypatch)
     app.history.add("held")
-    # Mark a modifier as still physically held on the repaste listener.
-    app.repaste_hotkey._held = {"ctrl": {59}}
+    # The chord is still physically held: pressed arrived, released has not.
+    carbon_mod._dispatch(app.repaste_hotkey._hotkey_id, carbon_mod.kEventHotKeyPressed)
 
     done = threading.Event()
     def run():
@@ -797,9 +793,11 @@ def test_func_wait_all_released_before_paste(monkeypatch):
     # While still held, nothing should paste.
     with pytest.raises(queue.Empty):
         pasted.get(timeout=0.5)
-    # Release: clear held and notify the condition the way _release would.
+    # Release the shadow state the way the Carbon released event would —
+    # without dispatching a real released event, which would also fire a
+    # SECOND on_trigger (this test drives _do_repaste directly).
     with app.repaste_hotkey._cond:
-        app.repaste_hotkey._held = {}
+        app.repaste_hotkey._pressed = False
         app.repaste_hotkey._cond.notify_all()
     assert pasted.get(timeout=3.0) == "held "
     assert done.wait(timeout=2.0)

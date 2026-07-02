@@ -6,6 +6,7 @@ from datetime import datetime
 from typing import Callable
 
 from flow import engine_state, paths, permissions
+from flow.carbon_hotkey import CarbonHotkey, is_carbon_combo
 from flow.common_words import is_common
 from flow.config import Config
 from flow.corrector import TextCorrector
@@ -22,6 +23,51 @@ IDLE = "idle"
 RECORDING = "recording"
 PROCESSING = "processing"
 LOADING = "loading"
+
+# Either global-shortcut backend: flow.hotkey.HotkeyListener (event tap) or
+# flow.carbon_hotkey.CarbonHotkey. Both expose the same surface App uses:
+# start/stop/wait_all_released/reset_hold_state and _name/_targets.
+Hotkey = HotkeyListener | CarbonHotkey
+
+
+def make_hotkey(
+    keys: list[str],
+    *,
+    hub: EventTapHub,
+    on_activate=None,
+    on_deactivate=None,
+    on_trigger=None,
+    name: str | None = None,
+    debug_label: str | None = None,
+) -> Hotkey:
+    """Build the right backend for a combo (issue #23).
+
+    A combo with exactly one non-modifier key plus modifiers gets the Carbon
+    RegisterEventHotKey backend: no TCC permission, no tap failure modes.
+    Everything else — modifier-only combos (the defaults; Carbon cannot
+    express them) and exotic multi-character combos — stays on the shared
+    event-tap listener. Raises ValueError for invalid key names, exactly like
+    the HotkeyListener constructor (set_hotkeys relies on that to reject a
+    bad save while keeping the current shortcuts).
+    """
+    if is_carbon_combo(keys):
+        return CarbonHotkey(
+            keys,
+            on_activate=on_activate,
+            on_deactivate=on_deactivate,
+            on_trigger=on_trigger,
+            name=name,
+            debug_label=debug_label,
+        )
+    return HotkeyListener(
+        keys,
+        on_activate=on_activate,
+        on_deactivate=on_deactivate,
+        on_trigger=on_trigger,
+        name=name,
+        debug_label=debug_label,
+        hub=hub,
+    )
 
 
 class App:
@@ -54,8 +100,11 @@ class App:
         # so there is exactly one CGEventTapCreate however many shortcuts
         # are configured, and one mach port for macOS to disable.
         self.tap_hub = EventTapHub()
-        self.hotkey = HotkeyListener(
-            keys=config.keys,
+        # Each listener gets its backend from make_hotkey (issue #23):
+        # key+modifier combos ride Carbon RegisterEventHotKey (no TCC, no tap
+        # failure modes); modifier-only combos ride the shared tap hub.
+        self.hotkey = make_hotkey(
+            config.keys,
             on_activate=self._on_activate,
             on_deactivate=self._on_deactivate,
             name="dictation",
@@ -65,10 +114,10 @@ class App:
         # when the combo fires and re-arms so the real macOS tap can be verified
         # on hardware (the dev log), never in production.
         self._repaste_debug = "repaste" if paths.IS_DEV else None
-        # Second, independent listener (same shared tap): a clean tap of this
-        # combo re-pastes the most recent dictation into the focused window.
-        self.repaste_hotkey = HotkeyListener(
-            keys=config.repaste_keys,
+        # Second, independent listener: a clean tap of this combo re-pastes the
+        # most recent dictation into the focused window.
+        self.repaste_hotkey = make_hotkey(
+            config.repaste_keys,
             on_trigger=self._on_repaste,
             debug_label=self._repaste_debug,
             name="re-paste",
@@ -76,8 +125,8 @@ class App:
         )
         # Third independent listener: a clean tap opens the correction editor on
         # the last dictation (learn-from-correction). Same pattern as re-paste.
-        self.correction_hotkey = HotkeyListener(
-            keys=config.correct_keys,
+        self.correction_hotkey = make_hotkey(
+            config.correct_keys,
             on_trigger=self._on_correct,
             name="correction",
             hub=self.tap_hub,
@@ -184,7 +233,7 @@ class App:
         return ", ".join(self.dictionary.vocabulary) or None
 
     @staticmethod
-    def _released_or_stale(listener: HotkeyListener) -> bool:
+    def _released_or_stale(listener: "Hotkey") -> bool:
         """True when it is safe to synthesize Cmd+V: the listener confirms all
         trigger keys are up, OR its wait timed out but the OS's live flag state
         shows no modifier physically held (the shadow state was stale after a
@@ -408,7 +457,7 @@ class App:
                 self._state = IDLE
             self._notify("ready")
 
-    def iter_hotkeys(self) -> tuple[tuple[str, HotkeyListener], ...]:
+    def iter_hotkeys(self) -> tuple[tuple[str, Hotkey], ...]:
         """Every active global listener as (label, listener), read fresh.
 
         The single source of truth for "all taps", so periodic machinery
@@ -486,18 +535,30 @@ class App:
         return recovered
 
     def suspend_hotkeys(self) -> None:
-        """Mute the shared event tap (settings/correction window opening).
+        """Silence every global shortcut (settings/correction window opening).
 
-        The listen-only tap keeps observing keys even when a window is
-        focused, so a combo pressed to RECORD a shortcut would also fire the
-        live listeners. Muting the hub gates dispatch, making the window's
-        local NSEvent monitor the only combo listener while recording — the
-        tap itself is NOT destroyed (issue #20: every recreation was a fresh
-        opportunity to fail; window open/close now performs zero tap
-        create/destroy operations). Main thread only.
+        Tap side: the listen-only tap keeps observing keys even when a window
+        is focused, so a combo pressed to RECORD a shortcut would also fire
+        the live listeners. Muting the hub gates dispatch — the tap itself is
+        NOT destroyed (issue #20: every recreation was a fresh opportunity to
+        fail; window open/close performs zero tap create/destroy operations).
+
+        Carbon side (issue #23): a registered Carbon hotkey CONSUMES its
+        chord system-wide, so while it stays registered the settings
+        recorder's local NSEvent monitor would never even SEE the combo being
+        re-recorded. Carbon listeners are therefore unregistered here
+        (registration is cheap and failure-mode-free, unlike tap recreation)
+        and re-registered by resume/set via _start_all_hotkeys. Main thread
+        only.
         """
         self._hotkeys_suspended = True
         self.tap_hub.mute()
+        for label, lis in self.iter_hotkeys():
+            if isinstance(lis, CarbonHotkey):
+                try:
+                    lis.stop()
+                except Exception as exc:  # stop() never raises; stay safe
+                    print(f"Could not suspend the {label} Carbon hotkey: {exc}")
 
     def resume_hotkeys(self) -> None:
         """Unmute the hub and re-attempt any listener whose registration is
@@ -536,22 +597,22 @@ class App:
         unregistered (adversarial finding ADV-35).
         """
         try:
-            new_hotkey = HotkeyListener(
-                keys=dictate_keys,
+            new_hotkey = make_hotkey(
+                dictate_keys,
                 on_activate=self._on_activate,
                 on_deactivate=self._on_deactivate,
                 name="dictation",
                 hub=self.tap_hub,
             )
-            new_repaste = HotkeyListener(
-                keys=repaste_keys,
+            new_repaste = make_hotkey(
+                repaste_keys,
                 on_trigger=self._on_repaste,
                 debug_label=self._repaste_debug,
                 name="re-paste",
                 hub=self.tap_hub,
             )
-            new_correction = HotkeyListener(
-                keys=correct_keys,
+            new_correction = make_hotkey(
+                correct_keys,
                 on_trigger=self._on_correct,
                 name="correction",
                 hub=self.tap_hub,

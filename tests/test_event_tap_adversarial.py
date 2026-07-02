@@ -811,11 +811,13 @@ def test_adv30_suspend_resume_cycles_and_double_calls(app, quartz, monkeypatch):
 def test_adv31_set_hotkeys_while_suspended_swaps_listeners_and_unmutes(app, quartz):
     """ADV-31: Save while the settings window is open (suspended): the NEW
     listeners must end registered on the same single tap, the OLD ones gone,
-    and the hub unmuted."""
+    and the hub unmuted. Modifier-only combos throughout so all three stay on
+    the tap hub (a key+modifier combo now leaves for the Carbon backend, #23
+    — the mixed-backend swap is covered in tests/test_app_backend_selection.py)."""
     app.resume_hotkeys()
     old = [lis for _l, lis in app.iter_hotkeys()]
     app.suspend_hotkeys()
-    app.set_hotkeys(["cmd", "shift"], ["cmd", "alt", "r"], ["ctrl", "alt"])
+    app.set_hotkeys(["cmd", "shift"], ["cmd", "alt"], ["ctrl", "alt"])
     assert app.tap_hub._muted is False
     new = [lis for _l, lis in app.iter_hotkeys()]
     assert app.tap_hub._listeners == new

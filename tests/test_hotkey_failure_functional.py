@@ -43,6 +43,11 @@ def rig(monkeypatch, tmp_path):
 
     monkeypatch.setattr(app_mod.HotkeyListener, "start", fake_start)
     monkeypatch.setattr(app_mod.HotkeyListener, "stop", lambda self: None)
+    # Key+modifier combos rebuild onto the Carbon backend (issue #23): the
+    # same instrumentation must cover it, or a swapped combo would really
+    # register with Carbon mid-test.
+    monkeypatch.setattr(app_mod.CarbonHotkey, "start", fake_start)
+    monkeypatch.setattr(app_mod.CarbonHotkey, "stop", lambda self: None)
     monkeypatch.setattr(
         app_mod.engine_state,
         "save_engine",

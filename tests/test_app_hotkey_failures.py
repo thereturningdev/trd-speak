@@ -27,6 +27,8 @@ from flow.config import Config
 def app(monkeypatch, tmp_path):
     monkeypatch.setattr(app_mod.HotkeyListener, "start", lambda self: None)
     monkeypatch.setattr(app_mod.HotkeyListener, "stop", lambda self: None)
+    monkeypatch.setattr(app_mod.CarbonHotkey, "start", lambda self: None)
+    monkeypatch.setattr(app_mod.CarbonHotkey, "stop", lambda self: None)
     monkeypatch.setattr(
         app_mod.engine_state,
         "save_engine",
@@ -36,10 +38,11 @@ def app(monkeypatch, tmp_path):
 
 
 def _instrument(monkeypatch, app, failing_names):
-    """Make HotkeyListener.start record successes by listener name and raise
-    for names in `failing_names` (a mutable set, so tests can 'heal' a
-    listener later). Returns (started, reported) recorders; `reported`
-    collects every on_hotkeys_degraded call."""
+    """Make start() (on BOTH backends — set_hotkeys with a key+modifier combo
+    rebuilds onto CarbonHotkey, issue #23) record successes by listener name
+    and raise for names in `failing_names` (a mutable set, so tests can
+    'heal' a listener later). Returns (started, reported) recorders;
+    `reported` collects every on_hotkeys_degraded call."""
     started = []
 
     def fake_start(self):
@@ -48,6 +51,7 @@ def _instrument(monkeypatch, app, failing_names):
         started.append(self._name)
 
     monkeypatch.setattr(app_mod.HotkeyListener, "start", fake_start)
+    monkeypatch.setattr(app_mod.CarbonHotkey, "start", fake_start)
     reported = []
     app.on_hotkeys_degraded = lambda labels: reported.append(tuple(labels))
     return started, reported

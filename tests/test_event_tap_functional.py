@@ -120,8 +120,11 @@ def test_starting_all_three_shortcuts_creates_exactly_one_tap(app, quartz):
 
 
 def test_set_hotkeys_rebuild_does_not_create_or_destroy_taps(app, quartz):
+    # Modifier-only combos so all three rebuilt listeners stay on the tap hub
+    # (key+modifier combos leave for the Carbon backend, issue #23 — covered
+    # in tests/test_app_backend_selection.py).
     app.resume_hotkeys()
-    app.set_hotkeys(["cmd", "ctrl", "v"], ["cmd", "shift", "r"], ["cmd", "alt", "c"])
+    app.set_hotkeys(["cmd", "shift"], ["cmd", "alt"], ["ctrl", "alt"])
     assert quartz["creates"] == 1
     assert quartz["invalidated"] == 0
     # The rebuilt listeners are live on the same hub.

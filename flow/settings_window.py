@@ -26,6 +26,7 @@ import objc
 from Foundation import NSObject
 
 from flow import hotkey_state
+from flow.carbon_hotkey import combo_backend_description
 from flow.hotkey import (
     modifier_tokens_from_flags,
     token_for_keycode,
@@ -76,6 +77,10 @@ class _Recorder(NSObject):
         self._prior: list[str] = []
         self._monitor = None
         self._recording = False
+        # Optional hook the controller sets: called with the token list right
+        # after a combo is recorded (issue #23: the status line tells the user
+        # which backend flavor the combo gets).
+        self._on_recorded = None
         # Per-recording capture state.
         self._peak_modifiers: set[str] = set()
         self._got_key = False
@@ -142,6 +147,11 @@ class _Recorder(NSObject):
         """Accept a finalized combo and stop recording."""
         self._keys = keys
         self._finish_recording(restore=False)
+        if self._on_recorded is not None:
+            try:  # decoration only — must never break the recorder
+                self._on_recorded(list(keys))
+            except Exception as exc:
+                print(f"Recorder status callback error: {exc}")
 
     @objc.python_method
     def _refresh_title(self) -> None:
@@ -283,6 +293,19 @@ class SettingsWindowController:
         )
         content.addSubview_(self._correct_recorder.button)
 
+        # After a combo is recorded, the status line says which backend it
+        # gets (issue #23): key+modifier -> Carbon (no permissions needed);
+        # modifier-only -> the keyboard tap. Status line only, no new UI.
+        self._dictate_recorder._on_recorded = (
+            lambda keys: self._show_backend_flavor("Dictate", keys)
+        )
+        self._repaste_recorder._on_recorded = (
+            lambda keys: self._show_backend_flavor("Paste", keys)
+        )
+        self._correct_recorder._on_recorded = (
+            lambda keys: self._show_backend_flavor("Correct", keys)
+        )
+
         # Status / validation line.
         self._status = AppKit.NSTextField.alloc().initWithFrame_(
             Foundation.NSMakeRect(24, height - 176, width - 48, 34)
@@ -347,6 +370,12 @@ class SettingsWindowController:
     def _set_status(self, text: str) -> None:
         if self._status is not None:
             self._status.setStringValue_(text)
+
+    def _show_backend_flavor(self, label: str, keys: list[str]) -> None:
+        """Status-line note on which backend a just-recorded combo gets."""
+        description = combo_backend_description(keys)
+        if description:
+            self._set_status(f"{label}: {description}")
 
     # -- Save / Cancel / close --------------------------------------------
 

@@ -33,6 +33,8 @@ from flow.menubar import MenuBar, _Delegate
 def app(monkeypatch, tmp_path):
     monkeypatch.setattr(app_mod.HotkeyListener, "start", lambda self: None)
     monkeypatch.setattr(app_mod.HotkeyListener, "stop", lambda self: None)
+    monkeypatch.setattr(app_mod.CarbonHotkey, "start", lambda self: None)
+    monkeypatch.setattr(app_mod.CarbonHotkey, "stop", lambda self: None)
     monkeypatch.setattr(
         app_mod.engine_state,
         "save_engine",
@@ -42,8 +44,10 @@ def app(monkeypatch, tmp_path):
 
 
 def _instrument(monkeypatch, app, failing_names, exc_factory=None):
-    """start() records successes by listener name and raises for names in the
-    mutable `failing_names` set. exc_factory(name) customizes the exception."""
+    """start() (on BOTH backends — key+modifier combos rebuild onto
+    CarbonHotkey, issue #23) records successes by listener name and raises for
+    names in the mutable `failing_names` set. exc_factory(name) customizes the
+    exception."""
     started = []
     make = exc_factory or (lambda n: RuntimeError(f"tap create failed for {n}"))
 
@@ -53,6 +57,7 @@ def _instrument(monkeypatch, app, failing_names, exc_factory=None):
         started.append(self._name)
 
     monkeypatch.setattr(app_mod.HotkeyListener, "start", fake_start)
+    monkeypatch.setattr(app_mod.CarbonHotkey, "start", fake_start)
     reported = []
     app.on_hotkeys_degraded = lambda labels: reported.append(tuple(labels))
     return started, reported
@@ -71,6 +76,8 @@ def rig(monkeypatch, tmp_path):
 
     monkeypatch.setattr(app_mod.HotkeyListener, "start", fake_start)
     monkeypatch.setattr(app_mod.HotkeyListener, "stop", lambda self: None)
+    monkeypatch.setattr(app_mod.CarbonHotkey, "start", fake_start)
+    monkeypatch.setattr(app_mod.CarbonHotkey, "stop", lambda self: None)
     monkeypatch.setattr(
         app_mod.engine_state,
         "save_engine",

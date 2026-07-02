@@ -80,7 +80,27 @@ def _selftest() -> int:
         print("selftest FAILED: AVFoundation unavailable — Microphone prompt cannot fire")
         return 1
 
-    print(f"selftest OK ({pa_version}; {len(devices)} devices; {audio}; mic={mic})")
+    # Prove the vendored Carbon hotkey bridge (flow/_vendor/quickmachotkey,
+    # issue #23) is bundled AND answers at runtime: read the modifier
+    # constants from the real HIToolbox framework and resolve the event
+    # dispatcher target. A half-bundled bridge imports but cannot answer, and
+    # every key+modifier shortcut would then be dead in the frozen app. No
+    # hotkey is registered here (that would briefly swallow a chord
+    # system-wide on the user's machine).
+    from flow._vendor.quickmachotkey import _MinimalHIToolbox as _hitoolbox
+    from flow import carbon_hotkey  # noqa: F401  (the backend itself imports)
+
+    if (
+        _hitoolbox.cmdKey,
+        _hitoolbox.shiftKey,
+        _hitoolbox.optionKey,
+        _hitoolbox.controlKey,
+    ) != (0x100, 0x200, 0x800, 0x1000) or _hitoolbox.GetEventDispatcherTarget() is None:
+        print("selftest FAILED: Carbon HIToolbox hotkey bridge unavailable")
+        return 1
+
+    print(f"selftest OK ({pa_version}; {len(devices)} devices; {audio}; mic={mic}; "
+          f"carbon=OK)")
     return 0
 
 

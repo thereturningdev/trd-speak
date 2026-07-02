@@ -1,8 +1,9 @@
 """Live shortcut apply/suspend/resume on App.
 
 No AppKit: HotkeyListener.start/stop are monkeypatched to no-ops so no real
-Quartz event tap is ever created. Mirrors the fixture pattern in
-tests/test_app_engine.py.
+Quartz event tap is ever created (and CarbonHotkey.start/stop likewise, since
+issue #23 routes key+modifier combos to the Carbon backend). Mirrors the
+fixture pattern in tests/test_app_engine.py.
 """
 
 import pytest
@@ -14,10 +15,12 @@ from flow.config import Config
 
 @pytest.fixture
 def app(monkeypatch, tmp_path):
-    # No real event tap: neuter the listener's tap machinery for every
-    # HotkeyListener (the constructor's pair and any rebuilt pair).
+    # No real event tap / Carbon registration: neuter both backends' start and
+    # stop for every listener (the constructor's trio and any rebuilt trio).
     monkeypatch.setattr(app_mod.HotkeyListener, "start", lambda self: None)
     monkeypatch.setattr(app_mod.HotkeyListener, "stop", lambda self: None)
+    monkeypatch.setattr(app_mod.CarbonHotkey, "start", lambda self: None)
+    monkeypatch.setattr(app_mod.CarbonHotkey, "stop", lambda self: None)
     # Persist into a temp state file, not the real home dir.
     monkeypatch.setattr(
         app_mod.engine_state,
@@ -48,12 +51,13 @@ def test_set_hotkeys_replaces_all_listeners_and_updates_config(app):
 
 def test_set_hotkeys_calls_stop_then_start_on_all_three(app, monkeypatch):
     events = []
-    monkeypatch.setattr(
-        app_mod.HotkeyListener, "stop", lambda self: events.append(("stop", id(self)))
-    )
-    monkeypatch.setattr(
-        app_mod.HotkeyListener, "start", lambda self: events.append(("start", id(self)))
-    )
+    for cls in (app_mod.HotkeyListener, app_mod.CarbonHotkey):
+        monkeypatch.setattr(
+            cls, "stop", lambda self: events.append(("stop", id(self)))
+        )
+        monkeypatch.setattr(
+            cls, "start", lambda self: events.append(("start", id(self)))
+        )
     old_ids = {id(app.hotkey), id(app.repaste_hotkey), id(app.correction_hotkey)}
 
     app.set_hotkeys(["cmd", "ctrl", "v"], ["cmd", "shift", "r"], ["cmd", "alt", "c"])
