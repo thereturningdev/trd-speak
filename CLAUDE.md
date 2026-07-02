@@ -2,9 +2,10 @@
 
 ## Non-negotiable requirements
 
-- Every requirement in [NFR-general.md](./NFR-general.md) is non-negotiable.
+- Every requirement in the documents under [nfr/](./nfr/) is non-negotiable (see the
+  "Non-Functional Requirements (MANDATORY)" section below for the full list).
 - These requirements apply to every single interaction with the user, without exception.
-- Read and comply with `NFR-general.md` before responding.
+- Read and comply with them before responding.
 - Every ground rule below is equally non-negotiable.
 
 ## Ground rules
@@ -33,3 +34,15 @@
    while running automated tests, during which you may configure the machine and run software. When
    you deliver a development build, provide **only the application** — do not install it, do not
    configure it, do not grant it permissions. The user installs, configures, and tests it.
+
+<!-- nfr:start -->
+## Non-Functional Requirements (MANDATORY)
+
+These requirements are mandatory for all work in this project. Read each file
+and follow it:
+
+- [NFR-general](nfr/NFR-general.md)
+- [NFR-development](nfr/NFR-development.md)
+- [NFR-python](nfr/NFR-python.md)
+- [NFR-desktop-app](nfr/NFR-desktop-app.md)
+<!-- nfr:end -->
