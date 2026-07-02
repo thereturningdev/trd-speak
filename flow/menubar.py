@@ -510,6 +510,20 @@ class MenuBar:
         )
         self._header.setEnabled_(False)
         menu.addItem_(self._header)
+
+        # Persistent "shortcuts degraded" indication (issue #22): shown while
+        # any hotkey listener failed to start (App.on_hotkeys_degraded reports
+        # the labels). A disabled info row — never a notification, which this
+        # machine does not reliably display — that clears itself when the 2 s
+        # watchdog's start() retry brings the listener back.
+        self._failed_hotkey_labels: tuple = ()
+        self._hotkey_warning = AppKit.NSMenuItem.alloc().initWithTitle_action_keyEquivalent_(
+            "", None, ""
+        )
+        self._hotkey_warning.setEnabled_(False)
+        self._hotkey_warning.setHidden_(True)
+        menu.addItem_(self._hotkey_warning)
+
         menu.addItem_(AppKit.NSMenuItem.separatorItem())
 
         # One row per permission; hidden while everything is granted.
@@ -703,6 +717,13 @@ class MenuBar:
         self._active_engine = active_name
         _on_main(self._render)
 
+    def update_hotkey_failures(self, labels: tuple) -> None:
+        """Thread-safe: show/clear the "shortcuts not working" row. `labels`
+        are the iter_hotkeys() labels whose start() failed (empty = healthy).
+        Wired to App.on_hotkeys_degraded."""
+        self._failed_hotkey_labels = tuple(labels)
+        _on_main(self._render)
+
     def update_combo(self, dictate_keys: list[str], repaste_keys: list[str]) -> None:
         """Refresh the header's dictate combo ("Ready — hold … to dictate")
         after a shortcut change. Re-renders on the main thread.
@@ -757,6 +778,16 @@ class MenuBar:
             self._header.setTitle_(
                 texts.get(self._app_state, self._app_detail or self._app_state)
             )
+        # Shortcuts-degraded row: independent of the permission/restart states
+        # (a start() failure can happen in the fully-granted Ready state, which
+        # is exactly when it must be visible). The watchdog clears it via
+        # update_hotkey_failures(()) once the listeners recover.
+        failed = self._failed_hotkey_labels
+        if failed:
+            self._hotkey_warning.setTitle_(
+                "⚠️ Shortcuts not working: " + ", ".join(failed) + " — retrying…"
+            )
+        self._hotkey_warning.setHidden_(not failed)
         self._restart_item.setHidden_(not restart)
         for step_no, perm in enumerate(permissions.PERMISSIONS, 1):
             item = self._perm_items[perm.key]
@@ -812,16 +843,25 @@ class MenuBar:
 
 
 def reenable_disabled_taps(logic) -> list[str]:
-    """Re-assert every global tap macOS has disabled; return the labels that
-    had to be re-enabled.
+    """Recover every dead global tap; return the labels that were recovered.
 
-    macOS disables a tap whose callback overruns the timeout and delivers a
-    disable event the callback normally re-enables on — but that event can be
-    missed if the app is briefly unresponsive, leaving the tap dead until
-    restart. This watchdog is the backstop. Iterating logic.iter_hotkeys() (the
-    single source of truth) guarantees no tap is silently left unwatched.
+    Two failure shapes, both handled each tick:
+    - a listener whose tap EXISTS but macOS disabled it (slow callback tripped
+      the tap timeout) gets a CGEventTapEnable re-assert (ensure_enabled);
+    - a listener whose tap is None because start() FAILED (stale TCC grant,
+      transient CGEventTapCreate refusal in resume/set_hotkeys) gets a full
+      start() retry via logic.retry_failed_hotkeys() — which is a no-op while
+      the taps are deliberately suspended (a settings/correction window is
+      open), so the watchdog never resurrects suspended taps.
+
+    Iterating logic.iter_hotkeys() (the single source of truth) guarantees no
+    tap is silently left unwatched.
     """
-    return [label for label, lis in logic.iter_hotkeys() if lis.ensure_enabled()]
+    recovered = list(logic.retry_failed_hotkeys())
+    recovered.extend(
+        label for label, lis in logic.iter_hotkeys() if lis.ensure_enabled()
+    )
+    return recovered
 
 
 def run(config: Config) -> None:
@@ -856,6 +896,9 @@ def run(config: Config) -> None:
     logic.on_state = ui.set_state
     logic.on_engine = ui.update_engine
     logic.notify = _notify
+    # Persistent menu indication when a hotkey listener fails to start
+    # (resume/set_hotkeys after a settings/correction window, or boot).
+    logic.on_hotkeys_degraded = ui.update_hotkey_failures
     # Wire correction & learning hooks so the global ⌘⌥ tap and the editor
     # both open the same window, and a learned rule rebuilds the submenu live.
     logic.open_correction_window = lambda: open_correction_window(logic)
@@ -935,7 +978,7 @@ def run(config: Config) -> None:
         if state["boot_ok"]:
             try:
                 for label in reenable_disabled_taps(logic):
-                    print(f"{label} tap had been disabled — re-enabled by watchdog.")
+                    print(f"{label} tap was dead — recovered by the watchdog.")
                 # Liveness heartbeat (~30 s): a long run of zeros while the app
                 # is in use means a tap has gone silent — direct evidence of the
                 # "stops after a while" freeze, no keystrokes logged.

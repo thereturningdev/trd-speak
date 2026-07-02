@@ -85,6 +85,16 @@ class App:
         self.on_learned: Callable[[], None] | None = None
         # User-facing notifier (menubar wires this to a macOS notification).
         self.notify: Callable[[str], None] = lambda _msg: None
+        # on_hotkeys_degraded: called with a tuple of iter_hotkeys() labels
+        # whose start() failed — empty tuple means all healthy (clears the
+        # menu indication). Wired by the menubar layer, like on_state.
+        self.on_hotkeys_degraded: Callable[[tuple[str, ...]], None] | None = None
+        # Labels of listeners whose last start() attempt raised; the 2 s
+        # watchdog (flow.menubar poll -> retry_failed_hotkeys) retries these.
+        self._failed_hotkeys: set[str] = set()
+        # True between suspend_hotkeys() and the next resume/set: the taps are
+        # deliberately down, so the watchdog must NOT resurrect them.
+        self._hotkeys_suspended = False
         # Pre-paste permission check. The default in-process preflight is
         # CACHED BY macOS at first call: a grant made during this process's
         # lifetime keeps reading as False and every paste would be refused.
@@ -364,6 +374,63 @@ class App:
             ("Correction", self.correction_hotkey),
         )
 
+    def _report_hotkey_failures(self) -> None:
+        """Push the current failure set to the UI hook (best-effort)."""
+        cb = self.on_hotkeys_degraded
+        if cb is not None:
+            try:
+                cb(tuple(
+                    label for label, _ in self.iter_hotkeys()
+                    if label in self._failed_hotkeys
+                ))
+            except Exception:
+                pass
+
+    def _start_all_hotkeys(self) -> None:
+        """Attempt start() on every listener, isolating failures per listener.
+
+        One raise (stale TCC grant, transient CGEventTapCreate failure) must
+        never strand the remaining listeners, and must never escape into the
+        ObjC delegate callbacks that call resume/set_hotkeys. Failures are
+        logged with the listener label, reported via on_hotkeys_degraded, and
+        retried by the watchdog (retry_failed_hotkeys) until they recover.
+        """
+        self._hotkeys_suspended = False
+        failed: set[str] = set()
+        for label, lis in self.iter_hotkeys():
+            try:
+                lis.start()
+            except Exception as exc:
+                print(f"Could not start the {label} hotkey listener: {exc}")
+                failed.add(label)
+        self._failed_hotkeys = failed
+        self._report_hotkey_failures()
+
+    def retry_failed_hotkeys(self) -> list[str]:
+        """Watchdog tick: retry start() on every listener whose last start()
+        failed; return the labels that recovered. No-op while the taps are
+        deliberately suspended (a settings/correction window is open) —
+        the watchdog must never resurrect suspended taps. Never raises.
+        Main thread only (same thread as the menu poll and resume/set)."""
+        if self._hotkeys_suspended or not self._failed_hotkeys:
+            return []
+        recovered = []
+        for label, lis in self.iter_hotkeys():
+            if label not in self._failed_hotkeys:
+                continue
+            try:
+                lis.start()
+            except Exception:
+                # Still failing: the original failure was already logged and
+                # the menu shows the degraded row — stay quiet to avoid a log
+                # line every 2 s.
+                continue
+            self._failed_hotkeys.discard(label)
+            recovered.append(label)
+        if recovered:
+            self._report_hotkey_failures()
+        return recovered
+
     def suspend_hotkeys(self) -> None:
         """Stop all three global event taps (settings window opening).
 
@@ -372,18 +439,20 @@ class App:
         Suspending all three makes the window's local NSEvent monitor the only
         listener active while recording. Main thread only.
         """
-        self.hotkey.stop()
-        self.repaste_hotkey.stop()
-        self.correction_hotkey.stop()
+        self._hotkeys_suspended = True
+        for label, lis in self.iter_hotkeys():
+            try:
+                lis.stop()
+            except Exception as exc:
+                print(f"Could not stop the {label} hotkey listener: {exc}")
 
     def resume_hotkeys(self) -> None:
         """Restart all three taps with the unchanged config keys (Cancel / close
         without save). start() recreates each tap after stop() cleared it.
-        Main thread only.
+        Failure-isolated: see _start_all_hotkeys. Never raises (the callers
+        are ObjC delegate callbacks). Main thread only.
         """
-        self.hotkey.start()
-        self.repaste_hotkey.start()
-        self.correction_hotkey.start()
+        self._start_all_hotkeys()
 
     def set_hotkeys(
         self,
@@ -400,10 +469,17 @@ class App:
         no race. The watchdog reads logic.hotkey / logic.repaste_hotkey fresh each
         tick and picks up the new objects automatically. After this call the new
         taps are live, so no separate resume_hotkeys is needed.
+
+        Failure-isolated: the config keys are committed BEFORE the starts, so
+        even if a listener cannot start the app is in a consistent,
+        self-reported state — the watchdog keeps retrying with the NEW combos.
+        Never raises (the caller is an ObjC delegate callback).
         """
-        self.hotkey.stop()
-        self.repaste_hotkey.stop()
-        self.correction_hotkey.stop()
+        for label, lis in self.iter_hotkeys():
+            try:
+                lis.stop()
+            except Exception as exc:
+                print(f"Could not stop the {label} hotkey listener: {exc}")
         self.hotkey = HotkeyListener(
             keys=dictate_keys,
             on_activate=self._on_activate,
@@ -421,12 +497,10 @@ class App:
             on_trigger=self._on_correct,
             name="correction",
         )
-        self.hotkey.start()
-        self.repaste_hotkey.start()
-        self.correction_hotkey.start()
         self.config.keys = list(dictate_keys)
         self.config.repaste_keys = list(repaste_keys)
         self.config.correct_keys = list(correct_keys)
+        self._start_all_hotkeys()
 
     def start(self) -> None:
         """Load the active engine and start the hotkey listener (call off-main)."""
@@ -439,24 +513,47 @@ class App:
             self.engine_name = "whisper"
             self.transcriber = make_transcriber("whisper", self.config)
             self.transcriber.load()
-        self.hotkey.start()
+        # The dictation listener is load-bearing: if its tap cannot be created
+        # the boot as a whole must fail — the exception is re-raised BELOW so
+        # flow.menubar's boot() can offer the user-initiated "Restart TRD
+        # Speak now" flow (macOS sometimes honors a fresh Input Monitoring
+        # grant only in a new process, so an in-process watchdog retry would
+        # spin forever). Per issue #22 the other two listeners are still
+        # ATTEMPTED first: one failure must never strand the rest.
+        dictation_error: Exception | None = None
+        try:
+            self.hotkey.start()
+        except Exception as exc:
+            print(f"Could not start the Hotkey (dictation) listener: {exc}")
+            dictation_error = exc
         # The re-paste tap is a convenience: if it cannot start, log and carry
         # on — push-to-talk must not be held hostage to it (both need the same
         # Input Monitoring grant, so in practice they succeed or fail together).
+        # Failures are tracked so the watchdog retries them (issue #22) —
+        # previously these taps stayed dead until restart.
+        failed: set[str] = set()
         try:
             self.repaste_hotkey.start()
         except Exception as exc:
-            print(f"Could not start the re-paste hotkey listener: {exc}")
+            print(f"Could not start the Re-paste hotkey listener: {exc}")
+            failed.add("Re-paste")
         else:
             repaste_combo = "+".join(self.config.repaste_keys)
             print(f"Tap {repaste_combo} to re-paste the last dictation.")
         try:
             self.correction_hotkey.start()
         except Exception as exc:
-            print(f"Could not start the correction hotkey listener: {exc}")
+            print(f"Could not start the Correction hotkey listener: {exc}")
+            failed.add("Correction")
         else:
             correct_combo = "+".join(self.config.correct_keys)
             print(f"Tap {correct_combo} to correct & learn from the last dictation.")
+        if dictation_error is not None:
+            # No degraded-row report: the restart-needed flow owns the UX and
+            # the watchdog only runs after a successful boot.
+            raise dictation_error
+        self._failed_hotkeys = failed
+        self._report_hotkey_failures()
         combo = "+".join(self.config.keys)
         print(f"Ready — hold {combo} to dictate.")
         if self.on_engine is not None:
